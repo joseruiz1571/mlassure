@@ -1,6 +1,6 @@
 {
   "name": "mlassure",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Agentic AI-control assurance — evidence-grounded conformance assessment for ML models",
   "type": "module",
   "scripts": {
