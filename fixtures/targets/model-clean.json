@@ -1,0 +1,115 @@
+{
+  "modelName": "fraud-detection-v2",
+  "endpointName": "fraud-detection-endpoint",
+  "registry": {
+    "modelPackageGroupName": "fraud-detection",
+    "modelPackageVersion": 3,
+    "modelApprovalStatus": "Approved",
+    "approvalTime": "2026-05-10T14:30:00Z",
+    "creationTime": "2026-05-09T10:00:00Z",
+    "modelPackageArn": "arn:aws:sagemaker:us-east-1:123456789012:model-package/fraud-detection/3"
+  },
+  "modelCard": {
+    "modelCardName": "fraud-detection-v2-card",
+    "modelCardStatus": "Approved",
+    "content": {
+      "intended_uses": "Classify financial transactions as fraudulent or legitimate for real-time scoring at payment authorization.",
+      "limitations": "Trained on US domestic card transactions 2023-2025. Performance degrades on international merchants. Not validated for ACH or wire transfers.",
+      "risk_rating": "Medium",
+      "evaluation_details": "AUC 0.94 on holdout; 2.1% false positive rate on holiday spending patterns."
+    }
+  },
+  "endpoint": {
+    "endpointName": "fraud-detection-endpoint",
+    "endpointStatus": "InService",
+    "instanceType": "ml.c5.xlarge",
+    "dataCaptureEnabled": true,
+    "capturePercentage": 100,
+    "captureDestination": "s3://ml-monitoring-prod/fraud-detection/capture/",
+    "enableNetworkIsolation": false
+  },
+  "monitors": [
+    {
+      "monitoringScheduleName": "fraud-detection-data-quality",
+      "monitorType": "DataQuality",
+      "scheduleStatus": "Scheduled",
+      "scheduleExpression": "cron(0 6 ? * * *)",
+      "lastRunStatus": "Completed",
+      "lastRunTime": "2026-06-09T06:00:00Z"
+    },
+    {
+      "monitoringScheduleName": "fraud-detection-model-quality",
+      "monitorType": "ModelQuality",
+      "scheduleStatus": "Scheduled",
+      "scheduleExpression": "cron(0 8 ? * * *)",
+      "lastRunStatus": "Completed",
+      "lastRunTime": "2026-06-09T08:00:00Z",
+      "baselineCreatedAt": "2026-05-10T16:00:00Z",
+      "baselineModelPackageVersion": 3
+    },
+    {
+      "monitoringScheduleName": "fraud-detection-model-bias",
+      "monitorType": "ModelBias",
+      "scheduleStatus": "Scheduled",
+      "scheduleExpression": "cron(0 10 ? * MON *)",
+      "lastRunStatus": "Completed",
+      "lastRunTime": "2026-06-08T10:00:00Z"
+    }
+  ],
+  "kms": {
+    "volumeKmsKeyId": "arn:aws:kms:us-east-1:123456789012:key/mrk-a1b2c3d4e5f6",
+    "artifactKmsKeyId": "arn:aws:kms:us-east-1:123456789012:key/mrk-a1b2c3d4e5f6",
+    "keyEnabled": true,
+    "keyManager": "CUSTOMER"
+  },
+  "network": {
+    "vpcId": "vpc-0abc123def456",
+    "vpcSubnetIds": ["subnet-0abc1", "subnet-0abc2"],
+    "securityGroupIds": ["sg-0def789"],
+    "enableNetworkIsolation": true
+  },
+  "executionRole": {
+    "roleArn": "arn:aws:iam::123456789012:role/SageMakerInferenceRole-FraudDetection",
+    "policies": [
+      {
+        "policyName": "SageMakerInvokeOnly",
+        "effect": "Allow",
+        "actions": ["sagemaker:InvokeEndpoint"],
+        "resources": ["arn:aws:sagemaker:us-east-1:123456789012:endpoint/fraud-detection-*"]
+      },
+      {
+        "policyName": "ModelArtifactsRead",
+        "effect": "Allow",
+        "actions": ["s3:GetObject"],
+        "resources": ["arn:aws:s3:::ml-models-prod/fraud-detection/*"]
+      },
+      {
+        "policyName": "CaptureWrite",
+        "effect": "Allow",
+        "actions": ["s3:PutObject"],
+        "resources": ["arn:aws:s3:::ml-monitoring-prod/fraud-detection/capture/*"]
+      }
+    ]
+  },
+  "cloudtrailEvents": [
+    {
+      "eventName": "CreateEndpoint",
+      "eventTime": "2026-05-10T15:00:00Z",
+      "userIdentity": { "type": "IAMUser", "userName": "mlops-deploy-svc" },
+      "requestParameters": {
+        "endpointName": "fraud-detection-endpoint",
+        "endpointConfigName": "fraud-detection-v2-config"
+      }
+    },
+    {
+      "eventName": "UpdateEndpoint",
+      "eventTime": "2026-05-10T15:30:00Z",
+      "userIdentity": { "type": "IAMUser", "userName": "mlops-deploy-svc" },
+      "requestParameters": {
+        "endpointName": "fraud-detection-endpoint",
+        "endpointConfigName": "fraud-detection-v3-config"
+      },
+      "note": "Deployed after registry approval at 14:30 — change control satisfied"
+    }
+  ]
+}

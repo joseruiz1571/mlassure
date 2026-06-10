@@ -1,0 +1,54 @@
+version: "0.1.0"
+description: "Curated SP 800-53 / COSAiS-aligned controls for SageMaker model assurance"
+controls:
+  - id: "SI-6(1)"
+    framework: "SP 800-53 Rev 5 / COSAiS AI Overlay"
+    pattern: synthesis
+    intent: >
+      The deployed model is monitored for performance degradation in production.
+      Monitoring must be active (data capture enabled), scheduled (model quality monitor),
+      and current (baseline reflects the currently deployed model version).
+    collectors:
+      - getDataCaptureConfig
+      - getModelMonitorSchedules
+      - getModelRegistryEntry
+
+  - id: "AC-6(9)"
+    framework: "SP 800-53 Rev 5"
+    pattern: sufficiency
+    intent: >
+      The model endpoint execution role grants only the permissions required for
+      inference. Role must not hold training-bucket writes, cross-account S3 access,
+      or broad SageMaker actions beyond InvokeEndpoint.
+    collectors:
+      - getEndpointExecutionRole
+
+  - id: "AU-12(3)"
+    framework: "SP 800-53 Rev 5"
+    pattern: correlation
+    intent: >
+      Changes to the model endpoint are preceded by a registry approval event.
+      The UpdateEndpoint or CreateEndpoint CloudTrail event must occur after
+      the model package reached "Approved" status — not before.
+    collectors:
+      - getCloudTrailEvents
+      - getModelRegistryEntry
+
+  - id: "SC-28"
+    framework: "SP 800-53 Rev 5"
+    pattern: deterministic
+    intent: >
+      Model artifacts and endpoint volumes are encrypted at rest using
+      customer-managed KMS keys (not AWS-managed keys).
+    collectors:
+      - getKMSConfig
+
+  - id: "SA-10"
+    framework: "SP 800-53 Rev 5"
+    pattern: attestation
+    intent: >
+      Model changes undergo documented human review including sign-off from
+      a named reviewer before deployment. This evidence is not machine-retrievable
+      from AWS and requires human attestation via a linked artifact.
+    collectors: []
+    note: "Deliberate insufficient-evidence case — correct output is requires-human-attestation"
