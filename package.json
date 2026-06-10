@@ -10,6 +10,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.104.1",
     "yaml": "^2.6.1"
   },
   "devDependencies": {

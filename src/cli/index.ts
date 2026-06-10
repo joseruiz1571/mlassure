@@ -3,23 +3,34 @@ import { resolve } from "node:path";
 import { loadControlSet } from "../loaders/control-loader.js";
 import { FixtureProvider } from "../providers/fixture-provider.js";
 import { EvidenceStore } from "../store/evidence-store.js";
+import { AnthropicProvider } from "../llm/anthropic-provider.js";
+import { runAssessment } from "../runner/assessment-runner.js";
 import type { AssessmentTarget } from "../types.js";
 
 const USAGE = `
 mlassure — agentic AI-control assurance
 
 Usage:
-  mlassure assess --controls <path> --target <path>
+  mlassure assess --controls <path> --target <path> [--live]
   mlassure --help
 
 Commands:
-  assess    Load a control set and fixture target; verify the scaffold is wired
+  assess    Assess a target model against a control set
 
 Options:
   --controls <path>   Path to YAML or JSON control set file
   --target <path>     Path to fixture target JSON file
+  --live              Run the full agent loop (requires ANTHROPIC_API_KEY in .env)
   --help, -h          Show this help text
 `.trim();
+
+const STATUS_ICON: Record<string, string> = {
+  satisfied: "✓",
+  "partially-satisfied": "~",
+  "not-satisfied": "✗",
+  "not-applicable": "-",
+  "insufficient-evidence": "?",
+};
 
 function parseArgs(argv: string[]): Record<string, string> {
   const result: Record<string, string> = {};
@@ -27,6 +38,8 @@ function parseArgs(argv: string[]): Record<string, string> {
     const arg = argv[i];
     if (arg === "--help" || arg === "-h") {
       result["help"] = "true";
+    } else if (arg === "--live") {
+      result["live"] = "true";
     } else if (arg?.startsWith("--") && argv[i + 1] && !argv[i + 1]!.startsWith("--")) {
       result[arg.slice(2)] = argv[i + 1]!;
       i++;
@@ -37,26 +50,62 @@ function parseArgs(argv: string[]): Record<string, string> {
   return result;
 }
 
-async function runAssess(controlsPath: string, targetPath: string): Promise<void> {
-  const absControls = resolve(controlsPath);
-  const absTarget = resolve(targetPath);
-
-  const controlSet = await loadControlSet(absControls);
-  const targetJson = JSON.parse(readFileSync(absTarget, "utf-8")) as AssessmentTarget;
-  const _provider = new FixtureProvider(absTarget);
+async function runScaffoldOnly(
+  controlsPath: string,
+  targetPath: string
+): Promise<void> {
+  const controlSet = await loadControlSet(controlsPath);
+  const targetJson = JSON.parse(readFileSync(targetPath, "utf-8")) as AssessmentTarget;
+  const _provider = new FixtureProvider(targetPath);
   const store = new EvidenceStore();
 
-  console.log("\nmlassure M0 — scaffold\n");
-  console.log(`Controls: ${controlSet.controls.length} loaded from ${absControls}`);
+  console.log("\nmlassure — scaffold mode (pass --live for agent assessment)\n");
+  console.log(`Controls: ${controlSet.controls.length} loaded`);
   for (const c of controlSet.controls) {
-    const collectorCount = c.collectors.length;
+    const n = c.collectors.length;
     console.log(
-      `  ${c.id.padEnd(12)} | ${c.pattern.padEnd(14)} | ${collectorCount} collector${collectorCount !== 1 ? "s" : ""}`
+      `  ${c.id.padEnd(12)} | ${c.pattern.padEnd(14)} | ${n} collector${n !== 1 ? "s" : ""}`
     );
   }
   console.log(`\nTarget:   ${targetJson.modelName} (${targetJson.endpointName})`);
   console.log(`Store:    ready (${store.size()} items)`);
-  console.log(`\nAssessment: not yet implemented (M1)\n`);
+  console.log(`\nRun with --live to invoke the agent loop.\n`);
+}
+
+async function runLive(
+  controlsPath: string,
+  targetPath: string
+): Promise<void> {
+  const controlSet = await loadControlSet(controlsPath);
+  const targetJson = JSON.parse(readFileSync(targetPath, "utf-8")) as AssessmentTarget;
+  const provider = new FixtureProvider(targetPath);
+  const llm = new AnthropicProvider();
+
+  console.log(
+    `\nmlassure — running assessment\n  Target:   ${targetJson.modelName}\n  Controls: ${controlSet.controls.length}\n`
+  );
+
+  const report = await runAssessment(controlSet, targetJson, provider, llm);
+
+  console.log(`\n${"─".repeat(72)}`);
+  console.log(`  mlassure Assessment Report`);
+  console.log(`  Target: ${report.targetName} (${report.endpointName})`);
+  console.log(`  Run at: ${report.runAt}`);
+  console.log(`${"─".repeat(72)}\n`);
+
+  for (const r of report.results) {
+    const icon = STATUS_ICON[r.judgment.status] ?? "?";
+    console.log(
+      `  ${icon} ${r.judgment.controlId.padEnd(12)} ${r.judgment.status.padEnd(22)} conf:${r.judgment.confidence.padEnd(7)} evidence:${r.evidenceCount}`
+    );
+    if (r.judgment.gaps.length > 0) {
+      for (const gap of r.judgment.gaps) {
+        console.log(`      gap: ${gap}`);
+      }
+    }
+  }
+
+  console.log(`\n${"─".repeat(72)}\n`);
 }
 
 async function main(): Promise<void> {
@@ -79,7 +128,14 @@ async function main(): Promise<void> {
       process.exit(1);
     }
 
-    await runAssess(controls, target);
+    const absControls = resolve(controls);
+    const absTarget = resolve(target);
+
+    if (args["live"]) {
+      await runLive(absControls, absTarget);
+    } else {
+      await runScaffoldOnly(absControls, absTarget);
+    }
     return;
   }
 
