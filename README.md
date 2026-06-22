@@ -94,6 +94,36 @@ CLI (assess command)
 
 ---
 
+## Implementation ledger
+
+*Which mechanisms described in the [essay series](#) are implemented, which are partial, and which are still design. Updated at each milestone.*
+
+**Implemented**
+
+- **Citation guard** — fail-closed: every ID in `evidenceCited` must trace to evidence retrieved this run; a phantom ID throws `CitationError` before any result is returned (`src/guard/citation-guard.ts`)
+- **Evidence store** — SHA-256 content-addressed, one store per control per run, duplicate-rejected at ingest (`src/store/evidence-store.ts`)
+- **Agent pattern taxonomy** — five patterns (`synthesis`, `sufficiency`, `correlation`, `deterministic`, `attestation`) defined in types and carried in the control YAML; each control is tagged before assessment runs (`src/types.ts`, `fixtures/controls/nist-subset.yaml`)
+- **Attestation → insufficient-evidence** — attestation-tagged controls return `insufficient-evidence` with a gap description; the system knows what it cannot determine; enforced via system prompt and verified in integration tests
+- **Tool-use loop** — Anthropic tool-use protocol, `MAX_ITERATIONS=10`, deterministic tool dispatch, citation validation at `submit_judgment` exit (`src/agent/agent.ts`)
+- **Fixture provider** — two fixture models with opposing verdicts (clean vs. stale monitoring) fully implement the `AwsProvider` interface (`src/providers/fixture-provider.ts`)
+
+**Partial**
+
+- **Pattern differentiation in loop mechanics** — `synthesis`, `sufficiency`, and `correlation` currently differ only in how the control is framed to the model (`PATTERN_DESCRIPTIONS` in `src/agent/prompts.ts`); they share the same loop. Whether the categories warrant separate mechanics — or whether sufficiency and correlation collapse into synthesis — is an M2/M3 design question.
+- **LLM bypass for `deterministic` and `attestation`** — both patterns still run the LLM loop; `deterministic` controls produce correct outputs via single-field prompting and `attestation` controls are instructed to return `insufficient-evidence`. Code-level routing that skips the loop for these patterns is a design target.
+- **Confidence as evidence coverage** — the principle (confidence should reflect how much of what the control requires was retrievable, not the model's self-assessment of its own reasoning) is stated in Essay 1 and in the system prompt framing. Current implementation uses model-reported confidence. Derivation from actual evidence coverage is an M2 target.
+
+**Designed**
+
+- **Tag provenance** — tags are static in the current control YAML; versioning with directional migration records is M3 and the subject of Essay 4
+- **OSCAL Assessment Results output** — M2
+- **Auditor narrative renderer** — M2
+- **Broader control coverage** (5–8 controls, including a deliberate insufficient-evidence path) — M3
+- **Docker** — M3
+- **Live AWS read-only provider** — M4
+
+---
+
 ## Control set
 
 `fixtures/controls/nist-subset.yaml` maps five NIST SP 800-53 Rev 5 controls to SageMaker evidence collectors:

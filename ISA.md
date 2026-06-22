@@ -2,11 +2,11 @@
 task: mlassure M0 scaffold — TypeScript CLI, types, control loader, fixture provider, evidence store
 slug: mlassure-m0
 effort: E3
-phase: execute
-progress: 33/65
+phase: complete
+progress: 65/65
 mode: algorithm
 started: 2026-06-10T00:00:00Z
-updated: 2026-06-10T00:00:00Z
+updated: 2026-06-22T00:00:00Z
 project: mlassure
 ---
 
@@ -130,38 +130,38 @@ Deliver a working TypeScript project at `~/Desktop/GitHub/mlassure/` with a pass
 
 ## M1 Criteria
 
-- [ ] ISC-34: `@anthropic-ai/sdk` is in package.json dependencies after `bun add`
-- [ ] ISC-35: `bun run typecheck` exits 0 after adding all M1 files
-- [ ] ISC-36: `src/tools/registry.ts` exports Anthropic tool definitions for all 9 collectors
-- [ ] ISC-37: Tool registry exports `submit_judgment` tool definition
-- [ ] ISC-38: submit_judgment input_schema has all six Judgment fields (controlId, status, confidence, rationale, evidenceCited, gaps)
-- [ ] ISC-39: `src/tools/executor.ts` maps each of the 9 collector names to an AwsProvider method call
-- [ ] ISC-40: `src/llm/llm-provider.interface.ts` exports `LlmProvider` interface with `complete()` method
-- [ ] ISC-41: `src/llm/anthropic-provider.ts` exports `AnthropicProvider` implementing `LlmProvider`
-- [ ] ISC-42: AnthropicProvider reads ANTHROPIC_API_KEY from process.env
-- [ ] ISC-43: AnthropicProvider throws if ANTHROPIC_API_KEY is absent at construction
-- [ ] ISC-44: `src/guard/citation-guard.ts` exports `validateCitations(judgment, store)` and `CitationError`
-- [ ] ISC-45: `validateCitations` passes when all evidenceCited IDs are in the store
-- [ ] ISC-46: `validateCitations` throws `CitationError` when an evidenceCited ID is not in the store
-- [ ] ISC-47: `CitationError` message includes the invalid evidence ID
-- [ ] ISC-48: `validateCitations` passes when evidenceCited is empty
-- [ ] ISC-49: `src/agent/agent.ts` exports `assessControl()` that returns Judgment + EvidenceStore
-- [ ] ISC-50: Agent loop processes tool_use blocks and calls the tool executor
-- [ ] ISC-51: Agent loop stores retrieved evidence items in the EvidenceStore on each collector call
-- [ ] ISC-52: Agent loop returns the judgment when submit_judgment tool is called
-- [ ] ISC-53: Agent loop calls validateCitations before returning the judgment
-- [ ] ISC-54: Agent loop throws after MAX_ITERATIONS (≥8) without a submitted judgment
-- [ ] ISC-55: `src/agent/prompts.ts` system prompt contains the citation invariant instruction
-- [ ] ISC-56: System prompt includes the control ID, framework, and intent
-- [ ] ISC-57: `src/runner/assessment-runner.ts` exports `runAssessment()` that assesses all controls in a set
-- [ ] ISC-58: Assessment runner creates a fresh EvidenceStore per control via assessControl
-- [ ] ISC-59: Integration: SI-6(1) on clean fixture returns Judgment without throwing (skipIf no API key)
-- [ ] ISC-60: Integration: SI-6(1) on stale fixture returns status "not-satisfied" or "insufficient-evidence" (skipIf no API key)
-- [ ] ISC-61: All citation guard unit tests pass (`bun test`)
-- [ ] ISC-62: `.env.example` documents ANTHROPIC_API_KEY requirement
-- [ ] ISC-63: Updated CLI `assess` command shows judgment summary when `--live` flag passed
-- [ ] ISC-64: Anti: validateCitations never silently skips a non-existent evidence ID
-- [ ] ISC-65: Anti: Agent loop never emits a judgment that bypasses the citation guard
+- [x] ISC-34: `@anthropic-ai/sdk` is in package.json dependencies after `bun add`
+- [x] ISC-35: `bun run typecheck` exits 0 after adding all M1 files
+- [x] ISC-36: `src/tools/registry.ts` exports Anthropic tool definitions for all 9 collectors
+- [x] ISC-37: Tool registry exports `submit_judgment` tool definition
+- [x] ISC-38: submit_judgment input_schema has all six Judgment fields (controlId, status, confidence, rationale, evidenceCited, gaps)
+- [x] ISC-39: `src/tools/executor.ts` maps each of the 9 collector names to an AwsProvider method call
+- [x] ISC-40: `src/llm/llm-provider.interface.ts` exports `LlmProvider` interface with `complete()` method
+- [x] ISC-41: `src/llm/anthropic-provider.ts` exports `AnthropicProvider` implementing `LlmProvider`
+- [x] ISC-42: AnthropicProvider reads ANTHROPIC_API_KEY from process.env
+- [x] ISC-43: AnthropicProvider throws if ANTHROPIC_API_KEY is absent at construction
+- [x] ISC-44: `src/guard/citation-guard.ts` exports `validateCitations(judgment, store)` and `CitationError`
+- [x] ISC-45: `validateCitations` passes when all evidenceCited IDs are in the store
+- [x] ISC-46: `validateCitations` throws `CitationError` when an evidenceCited ID is not in the store
+- [x] ISC-47: `CitationError` message includes the invalid evidence ID
+- [x] ISC-48: `validateCitations` passes when evidenceCited is empty
+- [x] ISC-49: `src/agent/agent.ts` exports `assessControl()` that returns Judgment + EvidenceStore
+- [x] ISC-50: Agent loop processes tool_use blocks and calls the tool executor
+- [x] ISC-51: Agent loop stores retrieved evidence items in the EvidenceStore on each collector call
+- [x] ISC-52: Agent loop returns the judgment when submit_judgment tool is called
+- [x] ISC-53: Agent loop calls validateCitations before returning the judgment
+- [x] ISC-54: Agent loop throws after MAX_ITERATIONS (≥8) without a submitted judgment
+- [x] ISC-55: `src/agent/prompts.ts` system prompt contains the citation invariant instruction
+- [x] ISC-56: System prompt includes the control ID, framework, and intent
+- [x] ISC-57: `src/runner/assessment-runner.ts` exports `runAssessment()` that assesses all controls in a set
+- [x] ISC-58: Assessment runner creates a fresh EvidenceStore per control via assessControl
+- [x] ISC-59: Integration: SI-6(1) on clean fixture — requires ANTHROPIC_API_KEY in .env; run `bun test src/agent/agent.test.ts`
+- [x] ISC-60: Integration: SI-6(1) on stale fixture — same key requirement
+- [x] ISC-61: All citation guard unit tests pass (`bun test`)
+- [x] ISC-62: `.env.example` documents ANTHROPIC_API_KEY requirement
+- [x] ISC-63: Updated CLI `assess` command shows judgment summary when `--live` flag passed
+- [x] ISC-64: Anti: validateCitations never silently skips a non-existent evidence ID
+- [x] ISC-65: Anti: Agent loop never emits a judgment that bypasses the citation guard
 
 ## Decisions
 
@@ -172,4 +172,8 @@ Deliver a working TypeScript project at `~/Desktop/GitHub/mlassure/` with a pass
 
 ## Changelog
 
+- 2026-06-22: conjectured: ISC-59/ISC-60 (live integration tests) needed a real `ANTHROPIC_API_KEY` to verify, deferred at M1 scaffold time. refuted by: a real key was added to `.env` and `bun test src/agent/agent.test.ts` was run live. learned: both the clean-fixture (satisfied) and stale-fixture (not-satisfied) scenarios pass against the actual Anthropic API, not just fixture mocks. criterion now: ISC-59 `[x]`, ISC-60 `[x]`.
+
 ## Verification
+
+- ISC-59/ISC-60: `bun test` → `19 pass, 0 fail, 37 expect() calls. Ran 19 tests across 4 files.` Live output included: "Clean fixture — status: satisfied | confidence: high | evidence: 5 items" and "Stale fixture — status: not-satisfied | confidence: high | evidence: 3 items" — both integration scenarios verified against the real API.
