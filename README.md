@@ -1,4 +1,4 @@
-# mlassure
+# MLAssure
 
 Agentic AI-control assurance. Point it at an ML model and a control set; it collects evidence from AWS, runs an LLM judgment loop only where judgment is actually required, and emits verdicts where every claimed evidence ID traces back to something actually retrieved this run.
 
@@ -8,7 +8,7 @@ Agentic AI-control assurance. Point it at an ML model and a control set; it coll
 
 ## The problem it solves
 
-Most LLM-based compliance tools let the model reason freely about whether controls are satisfied. That produces confident-sounding verdicts with no verifiable link to the evidence behind them. mlassure separates the concerns:
+Most LLM-based compliance tools let the model reason freely about whether controls are satisfied. That produces confident-sounding verdicts with no verifiable link to the evidence behind them. MLAssure separates the concerns:
 
 - **Deterministic collectors** fetch raw evidence from AWS (or fixtures) — no LLM involved
 - **Agent pattern tags** on each control determine whether LLM judgment is needed at all (`synthesis`, `sufficiency`, `correlation`) or whether the answer is deterministic (`deterministic`) or requires human attestation (`attestation`)
