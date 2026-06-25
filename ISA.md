@@ -2,11 +2,11 @@
 task: mlassure M2a commit + M2b narrative renderer
 slug: mlassure-m2b
 effort: E3
-phase: verify
+phase: complete
 progress: 54/54
 mode: algorithm
 started: 2026-06-10T00:00:00Z
-updated: 2026-06-25T00:00:00Z
+updated: 2026-06-25T08:45:00Z
 project: mlassure
 ---
 
@@ -353,6 +353,7 @@ Deliver a working TypeScript project at `~/Desktop/GitHub/mlassure/` with a pass
 
 - 2026-06-22: conjectured: ISC-59/ISC-60 (live integration tests) needed a real `ANTHROPIC_API_KEY` to verify, deferred at M1 scaffold time. refuted by: a real key was added to `.env` and `bun test src/agent/agent.test.ts` was run live. learned: both the clean-fixture (satisfied) and stale-fixture (not-satisfied) scenarios pass against the actual Anthropic API, not just fixture mocks. criterion now: ISC-59 `[x]`, ISC-60 `[x]`.
 - 2026-06-24 (M2a): conjectured: a single fail-closed rule — "only literal `satisfied` → OSCAL `satisfied`, everything else → `not-satisfied`" — was a clean, safe, uniform projection of mlassure's 5-valued judgment onto OSCAL's binary objective state. refuted by: the Rule 2 advisor showed `not-applicable` is not an uncertainty case (where fail-closed is correct) but a definite out-of-scope determination, and collapsing it into `not-satisfied` inflates the failure count and misleads any consumer that reads `state` and ignores custom props. learned: lossy enum projections need per-value scrutiny, not one blanket rule; "preserve precision in a prop" only protects consumers that read props, so the divergence must also be loud in a standard human-visible field (`remarks`). criterion now: ISC-82 keeps the binary projection but the writer attaches `remarks` to every non-`satisfied` finding with special N/A wording; two new tests pin the behavior (16 OSCAL tests total).
+- 2026-06-25 (M2b session, Algorithm-doctrine self-critique, not project-scoped): conjectured: hardening `narrative.ts` against malformed judgment data (the silent-failure-hunter's findings) was sufficient without touching `agent.ts`'s unvalidated cast, since the cast was already-shipped M1 code outside this session's stated scope ("commit M2a, then move on to M2b"). refuted by: the Rule 2 advisor call, made only once at VERIFY (not at its first documented trigger point — after PLAN, before BUILD), pointed out that shipping renderer-side defense while knowingly leaving the actual silent-failure boundary unguarded was internally inconsistent with the run's own intent; the boundary fix turned out to be a small, well-scoped mechanism change, not the design-policy question I'd assumed made it out of scope. learned: (1) call the Rule 2 advisor at PLAN→BUILD, not only once retrospectively at VERIFY — it would likely have caught this before the symptom-side code was written, producing one pass instead of two; (2) "this touches already-shipped code" is not by itself sufficient reason to defer a fix — the test is whether the change alters behavior for any currently-valid input (it doesn't here) or only for already-broken ones. Separately and non-project-specific: this run also selected FirstPrinciples, SystemsThinking, and ContextSearch as thinking capabilities but only applied FirstPrinciples/SystemsThinking as inline reasoning, never invoking their Skill tool (ContextSearch was eventually invoked for real, but only at VERIFY instead of OBSERVE) — a v6.3.0 doctrine violation (text-only capability claims are a CRITICAL FAILURE per the Algorithm spec) that the thinking floor survived only because Advisor + ReReadCheck + FeedbackMemoryConsult + ISA + ContextSearch (5) independently cleared E3's floor of 4. criterion now: no ISC changed (this is process learning, not a project criterion) — logged here per the Learning Router as a self-correction for future Algorithm runs, not a doctrine-file patch, since v6.3.0 already states both rules correctly; the gap was execution fidelity, not missing doctrine.
 
 ## Verification
 
