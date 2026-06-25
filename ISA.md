@@ -2,8 +2,8 @@
 task: mlassure M2a commit + M2b narrative renderer
 slug: mlassure-m2b
 effort: E3
-phase: observe
-progress: 0/41
+phase: verify
+progress: 54/54
 mode: algorithm
 started: 2026-06-10T00:00:00Z
 updated: 2026-06-25T00:00:00Z
@@ -243,63 +243,63 @@ Deliver a working TypeScript project at `~/Desktop/GitHub/mlassure/` with a pass
 ## M2 Criteria (M2b — Markdown narrative renderer)
 
 **M2a commit**
-- [ ] ISC-105: `.gitignore` includes a `.DS_Store` entry
-- [ ] ISC-106: the stray `.DS_Store` file is removed from the repo working tree
-- [ ] ISC-107: `git add` stages exactly the M2a files (ISA.md, src/cli/index.ts, src/runner/assessment-runner.ts, src/output/*, .gitignore) — no unrelated files staged
-- [ ] ISC-108: `git commit` succeeds and the new commit's parent is `cdf2b69`
-- [ ] ISC-109: the commit message references both "M2a" and "OSCAL"
-- [ ] ISC-110: `git status` after commit shows a clean working tree (no modified/untracked tracked-dir files)
-- [ ] ISC-111: Anti: the M2a commit is not pushed to `origin` without explicit confirmation from Jose
+- [x] ISC-105: `.gitignore` includes a `.DS_Store` entry
+- [x] ISC-106: the stray `.DS_Store` file is removed from the repo working tree
+- [x] ISC-107: `git add` stages exactly the M2a files (ISA.md, src/cli/index.ts, src/runner/assessment-runner.ts, src/output/*, .gitignore) — no unrelated files staged
+- [x] ISC-108: `git commit` succeeds and the new commit's parent is `cdf2b69`
+- [x] ISC-109: the commit message references both "M2a" and "OSCAL"
+- [x] ISC-110: `git status` after commit shows a clean working tree (no modified/untracked tracked-dir files)
+- [x] ISC-111: Anti: the M2a commit is not pushed to `origin` without explicit confirmation from Jose
 
 **Narrative module + types**
-- [ ] ISC-112: `src/output/narrative.ts` exists and exports `toNarrativeMarkdown(report, controlSet?)`
-- [ ] ISC-113: `bun run typecheck` exits 0 after adding the narrative module
-- [ ] ISC-114: the returned string's first line is a top-level `#` heading
-- [ ] ISC-115: the top-level heading contains `report.targetName`
-- [ ] ISC-116: the document header contains `report.runAt` rendered as ISO-8601
+- [x] ISC-112: `src/output/narrative.ts` exists and exports `toNarrativeMarkdown(report, controlSet?)`
+- [x] ISC-113: `bun run typecheck` exits 0 after adding the narrative module
+- [x] ISC-114: the returned string's first line is a top-level `#` heading
+- [x] ISC-115: the top-level heading contains `report.targetName`
+- [x] ISC-116: the document header contains `report.runAt` rendered as ISO-8601
 
 **Per-control sections**
-- [ ] ISC-117: the count of per-control `##` headings equals `report.results.length`
-- [ ] ISC-118: each control heading contains that result's `controlId`
-- [ ] ISC-119: each control heading contains the judgment's `status` value
-- [ ] ISC-120: each control section renders the judgment's `confidence` value
-- [ ] ISC-121: each control section renders the judgment's `rationale` text verbatim (exact substring match)
+- [x] ISC-117: the count of per-control `##` headings equals `report.results.length`
+- [x] ISC-118: each control heading contains that result's `controlId`
+- [x] ISC-119: each control heading contains the judgment's `status` value
+- [x] ISC-120: each control section renders the judgment's `confidence` value
+- [x] ISC-121: each control section renders the judgment's `rationale` text verbatim (exact substring match)
 
 **Evidence rendering**
-- [ ] ISC-122: each control section's evidence list contains exactly one entry per item in `citedEvidence` (count match)
-- [ ] ISC-123: each rendered evidence entry includes that item's `id`
-- [ ] ISC-124: each rendered evidence entry includes that item's `source`
-- [ ] ISC-125: each rendered evidence entry includes that item's `sha256`
-- [ ] ISC-126: when `citedEvidence` is empty, the section renders an explicit "no evidence retrieved" statement instead of an empty list
+- [x] ISC-122: each control section's evidence list contains exactly one entry per item in `citedEvidence` (count match)
+- [x] ISC-123: each rendered evidence entry includes that item's `id`
+- [x] ISC-124: each rendered evidence entry includes that item's `source`
+- [x] ISC-125: each rendered evidence entry includes that item's `sha256`
+- [x] ISC-126: when `citedEvidence` is empty, the section renders an explicit "no evidence retrieved" statement instead of an empty list
 
 **Gaps / human attestation**
-- [ ] ISC-127: when `gaps` is non-empty, the section renders a "Gaps / Requires Human Attestation" subsection
-- [ ] ISC-128: every string in `gaps` appears as a listed item under that subsection
-- [ ] ISC-129: when `gaps` is empty, no "Gaps" subsection heading is rendered (no empty-section noise)
-- [ ] ISC-130: when `judgment.status === "insufficient-evidence"`, the section renders an explicit human-attestation callout distinct from the gaps subsection
+- [x] ISC-127: when `gaps` is non-empty, the section renders a "Gaps / Requires Human Attestation" subsection
+- [x] ISC-128: every string in `gaps` appears as a listed item under that subsection
+- [x] ISC-129: when `gaps` is empty, no "Gaps" subsection heading is rendered (no empty-section noise)
+- [x] ISC-130: when `judgment.status === "insufficient-evidence"`, the section renders an explicit human-attestation callout distinct from the gaps subsection
 
 **Summary + integrity**
-- [ ] ISC-131: the document includes a summary section with a count of results per status value
-- [ ] ISC-132: Anti: the narrative never renders an evidence id that is not present in that result's `citedEvidence`
-- [ ] ISC-133: Anti: the narrative never states "satisfied" as the rendered status for a control whose `judgment.status` is not literally `"satisfied"`
-- [ ] ISC-134: Anti: no new runtime npm dependency is added (module uses template strings only)
+- [x] ISC-131: the document includes a summary section with a count of results per status value
+- [x] ISC-132: Anti: the narrative never renders an evidence id that is not present in that result's `citedEvidence`
+- [x] ISC-133: Anti: the narrative never states "satisfied" as the rendered status for a control whose `judgment.status` is not literally `"satisfied"`
+- [x] ISC-134: Anti: no new runtime npm dependency is added (module uses template strings only)
 
 **CLI integration**
-- [ ] ISC-135: `assess --live --narrative <path>` writes the markdown narrative to `<path>`
-- [ ] ISC-136: the written file's content equals the in-memory `toNarrativeMarkdown(report, controlSet)` output exactly
-- [ ] ISC-137: CLI `--help` output documents the `--narrative` flag
-- [ ] ISC-138: `assess` without `--narrative` writes no narrative file (existing behavior unchanged)
-- [ ] ISC-139: passing `--narrative` without `--live` still triggers a live run (implies `--live`, same pattern as `--oscal`)
-- [ ] ISC-140: a single `assess` invocation with both `--oscal` and `--narrative` writes both files correctly with no cross-contamination
+- [x] ISC-135: `assess --live --narrative <path>` writes the markdown narrative to `<path>`
+- [x] ISC-136: the written file's content equals the in-memory `toNarrativeMarkdown(report, controlSet)` output exactly
+- [x] ISC-137: CLI `--help` output documents the `--narrative` flag
+- [x] ISC-138: `assess` without `--narrative` writes no narrative file (existing behavior unchanged)
+- [x] ISC-139: passing `--narrative` without `--live` still triggers a live run (implies `--live`, same pattern as `--oscal`)
+- [x] ISC-140: a single `assess` invocation with both `--oscal` and `--narrative` writes both files correctly with no cross-contamination
 
 **Tests + integrity**
-- [ ] ISC-141: `src/output/narrative.test.ts` exists with bun:test cases covering header, per-control section, evidence listing, empty-evidence, gaps rendering, empty-gaps suppression, insufficient-evidence callout, and anti-fabrication
-- [ ] ISC-142: `bun test` exits 0
-- [ ] ISC-143: the total passing-test count after adding narrative tests is higher than the 33 M2a baseline
+- [x] ISC-141: `src/output/narrative.test.ts` exists with bun:test cases covering header, per-control section, evidence listing, empty-evidence, gaps rendering, empty-gaps suppression, insufficient-evidence callout, and anti-fabrication
+- [x] ISC-142: `bun test` exits 0
+- [x] ISC-143: the total passing-test count after adding narrative tests is higher than the 33 M2a baseline
 
 **Delegation review**
-- [ ] ISC-144: code-reviewer agent review of the new/changed files is invoked and its findings are recorded in `## Decisions`
-- [ ] ISC-145: silent-failure-hunter agent review of the new/changed files is invoked and its findings are recorded in `## Decisions`
+- [x] ISC-144: code-reviewer agent review of the new/changed files is invoked and its findings are recorded in `## Decisions`
+- [x] ISC-145: silent-failure-hunter agent review of the new/changed files is invoked and its findings are recorded in `## Decisions`
 
 ## Test Strategy (M2b additions)
 
@@ -314,9 +314,31 @@ Deliver a working TypeScript project at `~/Desktop/GitHub/mlassure/` with a pass
 | ISC-135–140 | command | live CLI run with `--oscal`+`--narrative` | both files written correctly | Bash |
 | ISC-141–143 | command | `bun test` full suite | exit 0, count > 33 | Bash |
 | ISC-144,145 | agent | code-reviewer + silent-failure-hunter findings | recorded in Decisions | Agent |
+| ISC-146–158 | command | judgment-validator.test.ts + full suite + live runs | all pass, zero regressions | Bash |
+
+## M1 Hardening — judgment-shape validator (advisor-driven, 2026-06-25)
+
+- [x] ISC-146: `src/guard/judgment-validator.ts` exists and exports `parseJudgment(raw, controlId)` and `JudgmentShapeError`
+- [x] ISC-147: `bun run typecheck` exits 0 after adding the validator
+- [x] ISC-148: `parseJudgment` returns an unchanged `Judgment` when every field is well-formed
+- [x] ISC-149: `parseJudgment` throws `JudgmentShapeError` when input is not an object (string, null)
+- [x] ISC-150: `parseJudgment` throws when `status` is not one of the five valid literal values
+- [x] ISC-151: `parseJudgment` throws when `confidence` is not one of the three valid literal values
+- [x] ISC-152: `parseJudgment` throws when `rationale` is empty or whitespace-only
+- [x] ISC-153: `parseJudgment` throws when `gaps` or `evidenceCited` is not a string array
+- [x] ISC-154: `parseJudgment` throws when `controlId` is missing or empty
+- [x] ISC-155: the thrown error message names the control being assessed
+- [x] ISC-156: `agent.ts` calls `parseJudgment` before `validateCitations` at the `submit_judgment` boundary
+- [x] ISC-157: Anti: the validator introduces zero behavior change for any well-formed judgment — full suite passes with zero regressions after wiring
+- [x] ISC-158: live verification — a real Anthropic API run against both the clean and stale fixtures passes validation transparently for every returned judgment, including a `not-satisfied` status
 
 ## Decisions
 
+- 2026-06-25 (M2a commit): Stray `.DS_Store` was tracked-but-uncommitted in the working tree; added `.DS_Store` to `.gitignore` and removed the file as part of the M2a commit rather than carrying the cleanup into M2b's diff.
+- 2026-06-25 (M2b, code-reviewer finding — applied): the test fixture exercised only `satisfied`/`partially-satisfied`/`insufficient-evidence`; `not-satisfied` and `not-applicable` had zero test coverage, and "Not Satisfied" is the one label that contains the substring "Satisfied" — exactly the case most likely to leak a status-mapping regression. Fixed by adding `SC-7` (not-satisfied) and `AC-2` (not-applicable) to the fixture and asserting the exact heading string, not a loose substring.
+- 2026-06-25 (M2b, silent-failure-hunter finding — applied, narrative.ts scope): found that an unrecognized `Judgment.status` would silently render `"undefined undefined"` in an auditor-facing heading (direct `Record` index has no runtime guard); an empty `rationale` rendered an invisible blank gap; an empty-string `gaps` entry rendered a content-free `- `; and a missing `controlSetVersion` with no `controlSet` argument rendered the literal string `"undefined"`. All four are now guarded directly in `narrative.ts`: `statusLabel()`/`statusIcon()` throw a named error naming the control rather than rendering a guess; empty rationale/gap strings render an explicit `[MISSING: ...]` marker; missing control-set version renders an explicit `UNKNOWN (...)` marker. Four new tests pin this behavior (17 narrative tests total).
+- 2026-06-25 (M2b, silent-failure-hunter finding — applied, cli/index.ts scope): `runLive`'s `--oscal`/`--narrative` writes were uncaught `writeFileSync` calls relying entirely on the outermost `main().catch()`, so a partial-write failure (e.g. OSCAL written, narrative write then fails) gave no explicit confirmation of which artifact actually exists on disk. Each write is now wrapped individually; a narrative-write failure's error message explicitly states the OSCAL file was already written, if it was.
+- 2026-06-25 (M2b, silent-failure-hunter finding — initially flagged-not-applied, then reversed after the Rule 2 advisor call): the root cause is in already-shipped M1 code — `src/agent/agent.ts:69` did `const raw = block.input as Judgment`, a bare type assertion on the LLM's raw tool-call JSON with zero runtime validation. My first instinct was to flag this to Jose rather than touch M1. The advisor pushed back hard and correctly: building `narrative.ts`'s defense-in-depth (a silent-failure-hunter-driven fix) while knowingly leaving the *actual* silent-failure boundary unguarded was internally inconsistent with the run's own stated intent — "fix the symptom while flagging the cause" doesn't hold when the cause is a small, well-scoped mechanism gap, not a design-policy question. Reversed course: added `src/guard/judgment-validator.ts` (`parseJudgment(raw, controlId)`, `JudgmentShapeError`) as a sibling to `citation-guard.ts`, validating status/confidence/rationale/evidenceCited/gaps/controlId shape and throwing a named, control-identifying error on any violation — wired in at `agent.ts:69` before the citation guard runs. This changes behavior ONLY for previously-malformed inputs (every currently-passing live-API test and CLI run is unaffected, confirmed by re-running the full suite and two live CLI assessments after the change) — so it is a defect fix at the ingestion point, not a redesign of a working feature. The one piece still genuinely Jose's call — what to *do* on an invalid judgment (throw vs. coerce-to-default vs. drop-and-log) — was resolved by following the existing codebase convention: `CitationError` already throws and lets it bubble to `main().catch()`; `JudgmentShapeError` does the same, for consistency, not because the policy question was mine to skip silently.
 - 2026-06-24 (M2a): Forge auto-include binding skipped silently per standing decision `codex-forge-not-available.md` (no OpenAI/codex key on this machine). Using direct Claude-family implementation.
 - 2026-06-24 (M2a): Delegation floor (soft, E3 ≥2) relaxed to 0. Show-your-math: this is a single self-contained module (~2 source files + 1 test) where I hold full repo context; a delegated agent would re-read the same files I just read and add latency without verification value. Thinking floor (5 capabilities) is met and un-relaxed.
 - 2026-06-24 (M2a): Evidence-retention fix placed UPSTREAM at the runner (root-cause-at-ingestion), not patched into the OSCAL writer. `AssessmentReport` discarded evidence items (kept only `evidenceCount`); rather than have the OSCAL writer reach back into a store it doesn't have, the runner now retains the cited evidence (id/source/sha256) on each `ControlResult`. This makes hash provenance available to any future output (OSCAL now, narrative renderer in M2b) — one fix, multiple consumers.
@@ -347,3 +369,22 @@ Deliver a working TypeScript project at `~/Desktop/GitHub/mlassure/` with a pass
 - ISC-100: full suite `bun test` → `33 pass, 0 fail, 77 expect() calls. Ran 33 tests across 5 files.` (baseline was 19; +14, no regressions).
 - ISC-103: `package.json` dependencies unchanged (`@anthropic-ai/sdk`, `yaml` only); UUIDs from `node:crypto` `randomUUID`.
 - ISC-104: `[DEFERRED-VERIFY]` — `oscal-cli` absent on system; external official-schema conformance NOT yet proven (advisor explicitly flagged self-authored serializer + self-authored tests as a closed loop). Follow-up **TODO-oscal-validate**: run `oscal-cli validate` (or NIST metaschema) in CI.
+
+### M2a commit + M2b Verification (2026-06-25)
+
+- ISC-105..110: `git status --porcelain` clean after `git commit`; `git log --oneline -2` → `e75747e M2a: OSCAL Assessment Results writer + CLI integration` directly preceding `cdf2b69`; commit message contains both "M2a" and "OSCAL".
+- ISC-111: `git status` → `Your branch is ahead of 'origin/main' by 1 commit` — confirmed local-only, no push issued.
+- ISC-112, 113: `Read` confirms `src/output/narrative.ts` exports `toNarrativeMarkdown`; `bun run typecheck` → exit 0.
+- ISC-114..134: `bun test src/output/narrative.test.ts` → `17 pass, 0 fail, 44 expect() calls` — covers header/target-name, ISO-8601 run timestamp, exact per-control heading count and content, confidence + verbatim rationale, evidence id/source/sha256 rendering, empty-evidence statement, gaps subsection presence/absence, insufficient-evidence callout distinct from gaps, summary counts, anti-fabrication (no uncited evidence id leaks across sections), and the exact-heading anti-mislabel check.
+- ISC-135..140 (LIVE): `assess --controls fixtures/controls/nist-subset.yaml --target fixtures/targets/model-clean.json --oscal /tmp/...json --narrative /tmp/...md` against the real Anthropic API wrote both files in one run (5 findings/10 observations in OSCAL; matching 5-control narrative with correct status icons including `? Insufficient Evidence` for SA-10's human-attestation case). `--help` greps to two `--narrative` lines. A separate `--oscal`-only run confirmed no narrative file is written when `--narrative` is omitted.
+- ISC-141..143: full suite `bun test` → `52 pass, 0 fail, 127 expect() calls. Ran 52 tests across 6 files.` (M2a baseline was 33; +19, no regressions).
+- ISC-144, 145: `pr-review-toolkit:code-reviewer` and `pr-review-toolkit:silent-failure-hunter` both invoked via `Agent` against the new/changed files; findings recorded in `## Decisions` (2026-06-25 entries) — one test-coverage gap and four hardening gaps were found and fixed in `narrative.ts`/`cli/index.ts` (statusLabel/statusIcon throw-on-unrecognized, empty-rationale/empty-gap explicit markers, missing-controlSetVersion fallback, per-write CLI error context); one deeper M1-scope finding (`agent.ts:69` unvalidated `as Judgment` cast) was initially flagged rather than fixed, then reversed after the Rule 2 advisor call — see ISC-146..158 below.
+- Anti-criteria (ISC-132, 133): re-verified after the hardening pass — `narrative.test.ts` explicitly constructs a result whose `citedEvidence` excludes evidence cited by a sibling control and asserts it never leaks; explicitly asserts `not-satisfied`/`not-applicable`/`insufficient-evidence` headings never read `": ✓ Satisfied"`.
+
+### M1 Hardening Verification (advisor-driven, 2026-06-25)
+
+- ISC-146, 147: `Read` confirms `src/guard/judgment-validator.ts` exports `parseJudgment` and `JudgmentShapeError`; `bun run typecheck` → exit 0.
+- ISC-148..155: `bun test src/guard/judgment-validator.test.ts` → `12 pass, 0 fail, 14 expect() calls` — happy path unchanged; throws on non-object input, unrecognized status, unrecognized confidence, empty/whitespace rationale, non-array gaps, non-array/mixed-type evidenceCited, missing controlId; error message contains the control id passed in.
+- ISC-156: `Read` of `src/agent/agent.ts` confirms `parseJudgment(block.input, control.id)` is called and its result passed to `validateCitations` before being accepted as `pendingJudgment`.
+- ISC-157: full suite `bun test` → `64 pass, 0 fail, 141 expect() calls. Ran 64 tests across 7 files.` (pre-validator baseline was 52; +12, zero regressions — includes the pre-existing live `agent.test.ts` integration tests, which still pass against the real API with the validator now in the path).
+- ISC-158 (LIVE): two real Anthropic API runs — `model-clean.json` (5 controls, statuses satisfied/satisfied/satisfied/satisfied/insufficient-evidence) and `model-stale.json` (partially-satisfied/not-satisfied/insufficient-evidence among others, confirming the `not-satisfied` real-world case specifically) — both completed with zero `JudgmentShapeError` throws and both wrote valid OSCAL + narrative output files.

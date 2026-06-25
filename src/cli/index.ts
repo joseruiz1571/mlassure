@@ -6,24 +6,26 @@ import { EvidenceStore } from "../store/evidence-store.js";
 import { AnthropicProvider } from "../llm/anthropic-provider.js";
 import { runAssessment } from "../runner/assessment-runner.js";
 import { toOscalAssessmentResults } from "../output/oscal-ar.js";
+import { toNarrativeMarkdown } from "../output/narrative.js";
 import type { AssessmentTarget } from "../types.js";
 
 const USAGE = `
 mlassure — agentic AI-control assurance
 
 Usage:
-  mlassure assess --controls <path> --target <path> [--live] [--oscal <path>]
+  mlassure assess --controls <path> --target <path> [--live] [--oscal <path>] [--narrative <path>]
   mlassure --help
 
 Commands:
   assess    Assess a target model against a control set
 
 Options:
-  --controls <path>   Path to YAML or JSON control set file
-  --target <path>     Path to fixture target JSON file
-  --live              Run the full agent loop (requires ANTHROPIC_API_KEY in .env)
-  --oscal <path>      Write OSCAL Assessment Results JSON to <path> (implies --live)
-  --help, -h          Show this help text
+  --controls <path>    Path to YAML or JSON control set file
+  --target <path>      Path to fixture target JSON file
+  --live               Run the full agent loop (requires ANTHROPIC_API_KEY in .env)
+  --oscal <path>       Write OSCAL Assessment Results JSON to <path> (implies --live)
+  --narrative <path>   Write the Markdown assurance narrative to <path> (implies --live)
+  --help, -h           Show this help text
 `.trim();
 
 const STATUS_ICON: Record<string, string> = {
@@ -77,7 +79,8 @@ async function runScaffoldOnly(
 async function runLive(
   controlsPath: string,
   targetPath: string,
-  oscalPath?: string
+  oscalPath?: string,
+  narrativePath?: string
 ): Promise<void> {
   const controlSet = await loadControlSet(controlsPath);
   const targetJson = JSON.parse(readFileSync(targetPath, "utf-8")) as AssessmentTarget;
@@ -110,10 +113,37 @@ async function runLive(
 
   console.log(`\n${"─".repeat(72)}\n`);
 
+  // Each write is wrapped individually so a failure on one names itself precisely
+  // and reports the other artifact's state — an operator must never have to infer
+  // which audit artifact exists on disk from console scrollback alone.
+  let oscalWritten: string | undefined;
+
   if (oscalPath) {
-    const oscal = toOscalAssessmentResults(report, controlSet);
-    writeFileSync(oscalPath, JSON.stringify(oscal, null, 2), "utf-8");
-    console.log(`  OSCAL Assessment Results written to ${oscalPath}\n`);
+    try {
+      const oscal = toOscalAssessmentResults(report, controlSet);
+      writeFileSync(oscalPath, JSON.stringify(oscal, null, 2), "utf-8");
+      oscalWritten = oscalPath;
+      console.log(`  OSCAL Assessment Results written to ${oscalPath}\n`);
+    } catch (err) {
+      throw new Error(
+        `Failed to write OSCAL Assessment Results to ${oscalPath}: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
+  if (narrativePath) {
+    try {
+      const narrative = toNarrativeMarkdown(report, controlSet);
+      writeFileSync(narrativePath, narrative, "utf-8");
+      console.log(`  Assurance narrative written to ${narrativePath}\n`);
+    } catch (err) {
+      const oscalNote = oscalWritten
+        ? ` (NOTE: OSCAL results were already written to ${oscalWritten} — only the narrative is missing)`
+        : "";
+      throw new Error(
+        `Failed to write assurance narrative to ${narrativePath}: ${err instanceof Error ? err.message : String(err)}${oscalNote}`
+      );
+    }
   }
 }
 
@@ -140,10 +170,11 @@ async function main(): Promise<void> {
     const absControls = resolve(controls);
     const absTarget = resolve(target);
     const oscalPath = args["oscal"] ? resolve(args["oscal"]) : undefined;
+    const narrativePath = args["narrative"] ? resolve(args["narrative"]) : undefined;
 
-    // --oscal requires a real assessment run, so it implies --live.
-    if (args["live"] || oscalPath) {
-      await runLive(absControls, absTarget, oscalPath);
+    // --oscal and --narrative each require a real assessment run, so either implies --live.
+    if (args["live"] || oscalPath || narrativePath) {
+      await runLive(absControls, absTarget, oscalPath, narrativePath);
     } else {
       await runScaffoldOnly(absControls, absTarget);
     }

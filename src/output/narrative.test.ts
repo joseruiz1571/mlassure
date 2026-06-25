@@ -1,0 +1,264 @@
+import { describe, it, expect } from "bun:test";
+import { toNarrativeMarkdown } from "./narrative.js";
+import type { AssessmentReport } from "../runner/assessment-runner.js";
+
+function sampleReport(): AssessmentReport {
+  return {
+    targetName: "fraud-detector-v2",
+    endpointName: "fraud-detector-v2-endpoint",
+    controlSetVersion: "nist-subset-1.0",
+    runAt: "2026-06-24T06:00:00.000Z",
+    results: [
+      {
+        controlId: "SI-6(1)",
+        judgment: {
+          controlId: "SI-6(1)",
+          status: "satisfied",
+          confidence: "high",
+          rationale: "Data capture enabled and ModelQuality monitor scheduled.",
+          evidenceCited: ["ev-endpoint", "ev-monitor"],
+          gaps: [],
+        },
+        evidenceCount: 3,
+        iterations: 2,
+        citedEvidence: [
+          {
+            id: "ev-endpoint",
+            source: "aws:sagemaker:describe-endpoint",
+            sha256: "a".repeat(64),
+            retrievedAt: "2026-06-24T05:59:00.000Z",
+          },
+          {
+            id: "ev-monitor",
+            source: "aws:sagemaker:list-monitoring-schedules",
+            sha256: "b".repeat(64),
+            retrievedAt: "2026-06-24T05:59:30.000Z",
+          },
+        ],
+      },
+      {
+        controlId: "AU-12(3)",
+        judgment: {
+          controlId: "AU-12(3)",
+          status: "partially-satisfied",
+          confidence: "medium",
+          rationale: "Logging present but retention period not configured.",
+          evidenceCited: ["ev-logs"],
+          gaps: ["No retention policy on audit logs"],
+        },
+        evidenceCount: 1,
+        iterations: 3,
+        citedEvidence: [
+          {
+            id: "ev-logs",
+            source: "aws:cloudwatch:describe-log-groups",
+            sha256: "c".repeat(64),
+            retrievedAt: "2026-06-24T05:58:00.000Z",
+          },
+        ],
+      },
+      {
+        controlId: "SA-10",
+        judgment: {
+          controlId: "SA-10",
+          status: "insufficient-evidence",
+          confidence: "low",
+          rationale: "No change-control evidence reachable from AWS for this control.",
+          evidenceCited: [],
+          gaps: [],
+        },
+        evidenceCount: 0,
+        iterations: 4,
+        citedEvidence: [],
+      },
+      {
+        controlId: "SC-7",
+        judgment: {
+          controlId: "SC-7",
+          status: "not-satisfied",
+          confidence: "high",
+          rationale: "Endpoint is not deployed inside a VPC; boundary protection is absent.",
+          evidenceCited: ["ev-network"],
+          gaps: [],
+        },
+        evidenceCount: 1,
+        iterations: 2,
+        citedEvidence: [
+          {
+            id: "ev-network",
+            source: "aws:sagemaker:describe-endpoint-network-config",
+            sha256: "d".repeat(64),
+            retrievedAt: "2026-06-24T05:57:00.000Z",
+          },
+        ],
+      },
+      {
+        controlId: "AC-2",
+        judgment: {
+          controlId: "AC-2",
+          status: "not-applicable",
+          confidence: "high",
+          rationale: "Control governs human account lifecycle management; this target has no human user accounts.",
+          evidenceCited: [],
+          gaps: [],
+        },
+        evidenceCount: 0,
+        iterations: 1,
+        citedEvidence: [],
+      },
+    ],
+  };
+}
+
+describe("toNarrativeMarkdown — document header", () => {
+  it("first line is a top-level heading containing the target name", () => {
+    const md = toNarrativeMarkdown(sampleReport());
+    const firstLine = md.split("\n")[0]!;
+    expect(firstLine.startsWith("# ")).toBe(true);
+    expect(firstLine).toContain("fraud-detector-v2");
+  });
+
+  it("header contains the run timestamp as ISO-8601", () => {
+    const report = sampleReport();
+    const md = toNarrativeMarkdown(report);
+    expect(md).toContain(report.runAt);
+    expect(() => new Date(report.runAt).toISOString()).not.toThrow();
+  });
+});
+
+describe("toNarrativeMarkdown — per-control sections", () => {
+  it("emits exactly one control heading per result", () => {
+    const report = sampleReport();
+    const md = toNarrativeMarkdown(report);
+    const controlHeadings = md
+      .split("\n")
+      .filter((line) => line.startsWith("## ") && line.includes(": "));
+    expect(controlHeadings).toHaveLength(report.results.length);
+  });
+
+  it("each control heading contains its controlId and judgment status", () => {
+    const md = toNarrativeMarkdown(sampleReport());
+    expect(md).toContain("## SI-6(1): ✓ Satisfied");
+    expect(md).toContain("## AU-12(3): ~ Partially Satisfied");
+    expect(md).toContain("## SA-10: ? Insufficient Evidence");
+    expect(md).toContain("## SC-7: ✗ Not Satisfied");
+    expect(md).toContain("## AC-2: - Not Applicable");
+  });
+
+  it("each section renders confidence and the rationale verbatim", () => {
+    const md = toNarrativeMarkdown(sampleReport());
+    expect(md).toContain("**Confidence:** high");
+    expect(md).toContain("Data capture enabled and ModelQuality monitor scheduled.");
+    expect(md).toContain("**Confidence:** medium");
+    expect(md).toContain("Logging present but retention period not configured.");
+  });
+});
+
+describe("toNarrativeMarkdown — evidence rendering", () => {
+  it("lists exactly one entry per cited evidence item, with id/source/sha256", () => {
+    const md = toNarrativeMarkdown(sampleReport());
+    expect(md).toContain("`ev-endpoint` — aws:sagemaker:describe-endpoint");
+    expect(md).toContain(`sha256: \`${"a".repeat(64)}\``);
+    expect(md).toContain("`ev-monitor` — aws:sagemaker:list-monitoring-schedules");
+    expect(md).toContain(`sha256: \`${"b".repeat(64)}\``);
+  });
+
+  it("renders an explicit no-evidence statement when citedEvidence is empty", () => {
+    const md = toNarrativeMarkdown(sampleReport());
+    expect(md).toContain("_No evidence retrieved for this control._");
+  });
+});
+
+describe("toNarrativeMarkdown — gaps and human attestation", () => {
+  it("renders a Gaps subsection listing every gap when gaps is non-empty", () => {
+    const md = toNarrativeMarkdown(sampleReport());
+    expect(md).toContain("#### Gaps / Requires Human Attestation");
+    expect(md).toContain("- No retention policy on audit logs");
+  });
+
+  it("does not render a Gaps subsection when gaps is empty", () => {
+    const report = sampleReport();
+    // SI-6(1) has no gaps.
+    const md = toNarrativeMarkdown(report);
+    const si6Section = md.split("## AU-12(3)")[0]!;
+    expect(si6Section).not.toContain("Gaps / Requires Human Attestation");
+  });
+
+  it("renders a distinct human-attestation callout only for insufficient-evidence", () => {
+    const md = toNarrativeMarkdown(sampleReport());
+    expect(md).toContain("**Requires human attestation.**");
+    const sa10Section = md.split("## SA-10")[1]!;
+    expect(sa10Section).toContain("Requires human attestation");
+    const si6Section = md.split("## SI-6(1)")[1]!.split("## AU-12(3)")[0]!;
+    expect(si6Section).not.toContain("Requires human attestation");
+  });
+});
+
+describe("toNarrativeMarkdown — summary and anti-criteria", () => {
+  it("includes a summary section with a count per status value", () => {
+    const md = toNarrativeMarkdown(sampleReport());
+    expect(md).toContain("## Summary");
+    expect(md).toContain("- Satisfied: 1");
+    expect(md).toContain("- Partially Satisfied: 1");
+    expect(md).toContain("- Insufficient Evidence: 1");
+    expect(md).toContain("- Not Satisfied: 1");
+    expect(md).toContain("- Not Applicable: 1");
+  });
+
+  it("never renders an evidence id absent from that result's citedEvidence", () => {
+    const report = sampleReport();
+    const md = toNarrativeMarkdown(report);
+    // AU-12(3) only cited ev-logs; ev-endpoint/ev-monitor must not appear in its section.
+    const au12Section = md.split("## AU-12(3)")[1]!.split("## SA-10")[0]!;
+    expect(au12Section).not.toContain("ev-endpoint");
+    expect(au12Section).not.toContain("ev-monitor");
+  });
+
+  it("never labels a non-satisfied control as Satisfied in the rendered status", () => {
+    const md = toNarrativeMarkdown(sampleReport());
+    const headings = md.split("\n").filter((l) => l.startsWith("## ") && l.includes(": "));
+    const nonSatisfiedIds = ["AU-12(3)", "SA-10", "SC-7", "AC-2"];
+    for (const id of nonSatisfiedIds) {
+      const heading = headings.find((l) => l.startsWith(`## ${id}`))!;
+      // "Not Satisfied" itself contains the substring "Satisfied" — assert the
+      // exact icon+label pair, not a loose substring match, so a regression that
+      // mislabels "not-satisfied" as "✓ Satisfied" is actually caught.
+      expect(heading).not.toContain(": ✓ Satisfied");
+    }
+    const sc7Heading = headings.find((l) => l.startsWith("## SC-7"))!;
+    expect(sc7Heading).toBe("## SC-7: ✗ Not Satisfied");
+  });
+});
+
+describe("toNarrativeMarkdown — hardening against malformed judgment data", () => {
+  it("throws rather than silently rendering an unrecognized status", () => {
+    const report = sampleReport();
+    // @ts-expect-error — simulating an unvalidated/hallucinated status reaching the renderer
+    report.results[0]!.judgment.status = "compliant";
+    expect(() => toNarrativeMarkdown(report)).toThrow(/unrecognized judgment status/);
+  });
+
+  it("renders an explicit missing-rationale marker instead of a blank gap", () => {
+    const report = sampleReport();
+    report.results[0]!.judgment.rationale = "";
+    const md = toNarrativeMarkdown(report);
+    expect(md).toContain("[MISSING: agent did not provide a rationale");
+  });
+
+  it("renders an explicit missing-gap marker instead of a bare dash", () => {
+    const report = sampleReport();
+    report.results[1]!.judgment.gaps = [""];
+    const md = toNarrativeMarkdown(report);
+    expect(md).toContain("- **[MISSING: empty gap description from agent]**");
+    expect(md).not.toContain("\n- \n");
+  });
+
+  it("falls back to an explicit UNKNOWN marker when controlSetVersion is absent and no controlSet is passed", () => {
+    const report = sampleReport();
+    // @ts-expect-error — simulating a malformed/hand-constructed report
+    report.controlSetVersion = undefined;
+    const md = toNarrativeMarkdown(report);
+    expect(md).toContain("UNKNOWN (control set version not recorded)");
+    expect(md).not.toContain("**Control set:** undefined");
+  });
+});
