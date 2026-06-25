@@ -101,8 +101,16 @@ async function runLive(
 
   for (const r of report.results) {
     const icon = STATUS_ICON[r.judgment.status] ?? "?";
+    // conf: is coverageConfidence (M2c, deterministic) — the now-authoritative value.
+    // self-reported: is the model's own self-assessment, kept visible, never dropped.
+    // padEnd(7) never truncates, but is only safe from misalignment because both
+    // values are validated to the 3-value confidence union before reaching here:
+    // judgment.confidence via parseJudgment/JUDGMENT_CONFIDENCES, coverageConfidence
+    // by construction in deriveCoverageConfidence. Neither file re-checks the other's
+    // guarantee — if that union ever widens, this line degrades silently to cosmetic
+    // misalignment, not a crash.
     console.log(
-      `  ${icon} ${r.judgment.controlId.padEnd(12)} ${r.judgment.status.padEnd(22)} conf:${r.judgment.confidence.padEnd(7)} evidence:${r.evidenceCount}`
+      `  ${icon} ${r.judgment.controlId.padEnd(12)} ${r.judgment.status.padEnd(22)} conf:${r.coverageConfidence.padEnd(7)} self-reported:${r.judgment.confidence.padEnd(7)} evidence:${r.evidenceCount}`
     );
     if (r.judgment.gaps.length > 0) {
       for (const gap of r.judgment.gaps) {

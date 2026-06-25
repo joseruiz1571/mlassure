@@ -1,12 +1,12 @@
 ---
-task: mlassure M2a commit + M2b narrative renderer
-slug: mlassure-m2b
-effort: E3
-phase: complete
-progress: 54/54
+task: mlassure M2c — confidence-as-coverage derivation
+slug: mlassure-m2c
+effort: E4
+phase: learn
+progress: 34/34
 mode: algorithm
 started: 2026-06-10T00:00:00Z
-updated: 2026-06-25T08:45:00Z
+updated: 2026-06-25T09:00:00Z
 project: mlassure
 ---
 
@@ -332,7 +332,94 @@ Deliver a working TypeScript project at `~/Desktop/GitHub/mlassure/` with a pass
 - [x] ISC-157: Anti: the validator introduces zero behavior change for any well-formed judgment — full suite passes with zero regressions after wiring
 - [x] ISC-158: live verification — a real Anthropic API run against both the clean and stale fixtures passes validation transparently for every returned judgment, including a `not-satisfied` status
 
+## M2 Features (M2c)
+
+| name | description | satisfies | depends_on | parallelizable |
+|------|-------------|-----------|------------|----------------|
+| coverage-mechanics | `agent.ts` tracks calledCollectors/citedCollectors per control | ISC-159..162 | none | no |
+| coverage-policy | `assessment-runner.ts` buckets into evidenceCoverage/coverageConfidence/raw counts on ControlResult | ISC-163..170 | coverage-mechanics | no |
+| oscal-coverage-props | additive `evidence-coverage`/`coverage-confidence` props in `oscal-ar.ts` | ISC-171..174 | coverage-policy | yes |
+| narrative-two-line-confidence | narrative renders both confidence values, never drops self-reported | ISC-175..177 | coverage-policy | yes |
+| cli-coverage-display | CLI one-liner shows coverageConfidence as primary | ISC-178..179 | coverage-policy | yes |
+| fixture-migration | hand-built ControlResult literals in oscal-ar.test.ts/narrative.test.ts updated | ISC-180..181 | coverage-policy | no |
+| coverage-tests | new tests for mechanics, vacuous case, anti-gaming, OSCAL props, narrative lines | ISC-182..189 | all above | no |
+| delegation-review-m2c | code-reviewer + silent-failure-hunter + Cato (E4-mandatory) | ISC-190..192 | coverage-tests | no |
+
+## M2 Criteria (M2c — confidence-as-coverage derivation)
+
+**Mechanics (agent.ts)**
+- [x] ISC-159: `agent.ts`'s tool-call loop builds a per-control `Map<evidenceId, collectorName>`, keyed by each stored evidence item's id, using `block.name` as the collector name
+- [x] ISC-160: `AssessControlResult` gains a `calledCollectors: Set<string>` — every collector name actually invoked during the control's assessment
+- [x] ISC-161: `AssessControlResult` gains a `citedCollectors: Set<string>` — collector names whose evidence appears in `judgment.evidenceCited`
+- [x] ISC-162: `bun run typecheck` exits 0 after the `agent.ts`/type changes
+
+**Policy (assessment-runner.ts)**
+- [x] ISC-163: `ControlResult` gains `evidenceCoverage: number` = `control.collectors.length === 0 ? 1.0 : citedCollectors.size / control.collectors.length`
+- [x] ISC-164: `ControlResult` gains `collectorsTagged: number` = `control.collectors.length`
+- [x] ISC-165: `ControlResult` gains `collectorsCalled: number` = `calledCollectors.size`
+- [x] ISC-166: `ControlResult` gains `collectorsCited: number` = `citedCollectors.size`
+- [x] ISC-167: `ControlResult` gains `coverageConfidence: "high"|"medium"|"low"` via: ratio===1→high; 0<ratio<1→medium; ratio===0 with collectorsTagged>0→low; collectorsTagged===0→high
+- [x] ISC-168: a `collectors: []` control (SA-10-shaped) gets `evidenceCoverage === 1.0` and `coverageConfidence === "high"` (vacuous truth, matches the published example)
+- [x] ISC-169: Anti: a control that calls only a strict subset of its tagged collectors never reaches `coverageConfidence: "high"` unless `collectorsCited === collectorsTagged`
+- [x] ISC-170: Anti: `evidenceCoverage` is never `NaN`, regardless of `collectorsTagged`
+
+**OSCAL additive props**
+- [x] ISC-171: `buildFinding` in `oscal-ar.ts` adds an `evidence-coverage` prop (numeric ratio as string) under `MLASSURE_NS`
+- [x] ISC-172: `buildFinding` adds a `coverage-confidence` prop with the derived bucket under `MLASSURE_NS`
+- [x] ISC-173: the existing self-reported `confidence` prop is unchanged and still present (additive, not replaced)
+- [x] ISC-174: `oscal-types.ts` requires zero changes
+
+**Narrative two-line display**
+- [x] ISC-175: `renderControlSection` renders `**Confidence (evidence coverage):** <bucket>` as the primary confidence line
+- [x] ISC-176: `renderControlSection` renders `**Confidence (model self-reported):** <judgment.confidence>` as a second, always-present line
+- [x] ISC-177: Anti: the self-reported confidence line is never omitted, even when it matches the coverage value exactly
+
+**CLI one-liner**
+- [x] ISC-178: the CLI one-line summary shows `coverageConfidence` as the primary `conf:` value
+- [x] ISC-179: the self-reported confidence value still appears somewhere in the printed output (not dropped)
+
+**Test fixture migration**
+- [x] ISC-180: every hand-built `ControlResult` literal in `oscal-ar.test.ts` is updated for the new required fields; `bun run typecheck` exits 0
+- [x] ISC-181: every hand-built `ControlResult` literal in `narrative.test.ts` is updated for the new required fields; `bun run typecheck` exits 0
+
+**New coverage tests**
+- [x] ISC-182: a test verifies `calledCollectors`/`citedCollectors` against a synthetic multi-collector scenario
+- [x] ISC-183: a test verifies the SA-10 vacuous case end-to-end
+- [x] ISC-184: a test verifies the partial-subset anti-gaming criterion (ISC-169) with a concrete synthetic example
+- [x] ISC-185: a test verifies the OSCAL coverage props (ISC-171/172)
+- [x] ISC-186: a test verifies the narrative's two-line rendering (ISC-175/176), including the never-omitted case
+- [x] ISC-187: full suite `bun test` exits 0 with passing count higher than the 64 baseline
+- [x] ISC-188 (LIVE): a live CLI run against both fixtures produces non-NaN, sensible coverage numbers for every control
+- [x] ISC-189: Anti: `judgment.confidence` is never silently dropped from OSCAL, narrative, or CLI output after this change
+
+**Delegation review**
+- [x] ISC-190: code-reviewer agent review invoked, findings recorded in Decisions
+- [x] ISC-191: silent-failure-hunter agent review invoked, findings recorded in Decisions
+- [x] ISC-192 (E4-mandatory): Cato cross-vendor audit invoked before `phase: complete`, verdict recorded — `skipped`, no codex/GPT-5.4 access on this machine (401), consistent with standing decision `codex-forge-not-available.md`; not a blocker
+
+## Test Strategy (M2c additions)
+
+| isc | type | check | threshold | tool |
+|-----|------|-------|-----------|------|
+| ISC-159–162 | command/grep | typecheck + Map/Set construction | exit 0 | Bash, Grep |
+| ISC-163–170 | command | new coverage unit tests | all pass | Bash |
+| ISC-171–174 | command | OSCAL prop tests | all pass | Bash |
+| ISC-175–177 | command | narrative two-line tests | all pass | Bash |
+| ISC-178–179 | command | live CLI output grep | both values present | Bash |
+| ISC-180–181 | command | typecheck after fixture migration | exit 0 | Bash |
+| ISC-182–189 | command | full suite + live runs | exit 0, count > 64 | Bash |
+| ISC-190–192 | agent | code-reviewer + silent-failure-hunter + Cato | findings recorded | Agent |
+
 ## Decisions
+
+- 2026-06-25 (M2c, Rule 2/3 advisor exchange — two calls): First advisor call raised 6 concerns. Disposition: (1) "denominator shrinks on not-attempted" was a misread of my own description — the denominator is always `control.collectors.length`, static, never runtime-adjusted; the PARTIAL-1 test already covers the "skip the inconvenient collector" attack the advisor was worried about, since calling-fewer-and-citing-all-of-what-you-called is exactly what that test pins at 0.5/medium, never 1.0/high. (2) Re-deriving the advisor's "ratio could exceed 1.0" concern myself (rather than trusting its exact framing) found a REAL bug: `isKnownCollector()` checks the global executor map, not `control.collectors` — fixed in `agent.ts` (both `calledCollectors` and `citedCollectors` now require tagged-set membership), with a new test proving an untagged collector's call+citation is excluded and coverage stays exactly 1.0. (3) Boundary-threshold concern doesn't apply — there are no graduated numeric cutoffs, only `ratio===1`/`ratio===0` exact checks (float-safe for integer-ratio operands per the advisor's own confirmation) and a single `medium` bucket for the open interval, which Jose explicitly chose over a finer-grained alternative. (4) Fixture-assertion concern doesn't apply — new tests assert on the actual coverage values, not just shape. (5) Accepted as fair: the anti-gaming tests are concrete illustrative cases, not property-based proofs — consistent with this codebase having no property-based testing anywhere, not manufacturing a new test paradigm for one case. Second advisor call (Rule 3 re-call, citing Essay 1 line 54 + the already-shipped SA-10 precedent for the high-vs-low question) resolved into a narrower technical bar — "is the zero-tagged case a deliberate decision with a guard and a test, or an accident that falls through to NaN/medium" — which is already true and already shipped: `evidenceCoverage` uses an explicit ternary (`collectorsTagged === 0 ? 1 : ...`), `deriveCoverageConfidence` checks `collectorsTagged === 0` before any ratio comparison, and the existing vacuous-case test asserts `Number.isNaN(result.evidenceCoverage) === false`. Grepped both test files to confirm no prior test exercised an out-of-tagged-collector call before the new one — the >1.0 bug was real but untested, not silently masked by an existing passing assertion. Full suite 71→72, zero regressions.
+- 2026-06-25 (M2c, silent-failure-hunter findings): (1, applied) `deriveCoverageConfidence` fell through to `"medium"` for `NaN`/`Infinity`/out-of-range input with no validation — currently unreachable through the real pipeline (confirmed: the only caller passes a `Set.size`-derived ratio with an explicit zero-tagged guard), but a silent default for corrupted numeric input contradicts the project's own fail-loud ethos and would silently inherit into the next formula change. Fixed: explicit `Number.isFinite`/range check that throws a named error; exported the function and added 6 direct unit tests (3 valid-bucket cases, 4 throw cases). (2, already covered) duplicate-collector denominator — already fixed earlier this session per the code-reviewer's identical finding; the silent-failure-hunter's own probe independently confirmed the fix closes it, and noted no regression test existed — it does (the `DUP-1` test added alongside the fix). (3, applied — minimal scope) a duplicate evidence id across two different collectors throws inside `EvidenceStore.add`, caught generically in `agent.ts` and fed back to the model as a tool-result string with zero operator-visible log — a real, currently-reachable gap (a future live-AWS provider with a non-random id scheme could trigger it). Fixed the acute part: the specific `"Duplicate evidence id:"` error class now gets a loud `console.error` naming the control and collector, distinguishing a provider/collector data-integrity defect from an ordinary "AWS call failed" error. Did NOT implement the fuller suggestion (a new `collectorErrors` field on `ControlResult`, surfaced into OSCAL remarks/narrative) — that's a more general evidence-collection-error-visibility feature that predates and outlives M2c specifically; logging it as a flagged future-work item rather than expanding this milestone's scope. (4, confirmed correct, test added) duplicate `evidenceCited` entries don't double-count toward coverage — `citedCollectors` is already a `Set`; added a regression test pinning this explicitly since no existing M2c test exercised it. (5, applied) added a doc comment in `cli/index.ts` naming the cross-file validation dependency that makes the `padEnd(7)` formatting safe, so a future change to the confidence union doesn't silently degrade alignment with nothing to catch it.
+- 2026-06-25 (M2c, code-reviewer findings — both applied): (1) `collectorsTagged` used `control.collectors.length` (raw array length) while `collectorsCalled`/`collectorsCited` are `Set.size` — a duplicate entry in a control's tagged collector list (e.g. a YAML authoring mistake) would inflate the denominator and silently under-report genuinely full coverage as `0.5`/`medium`. Fixed: `collectorsTagged = new Set(control.collectors).size`, matching every other count in the design. New regression test (`DUP-1`) pins this. (2) `calledCollectors`/`collectorsCalled` is fully computed and plumbed but never read by any output (OSCAL/narrative/CLI) — confirmed deliberate (the called-vs-cited gap is reserved for a future divergence-analysis pass, per the M2a/M2b precedent of keeping diagnostic signal even when not yet load-bearing), but the type lacked a comment saying so. Added one, so the next reader doesn't assume it's already wired up.
+- 2026-06-25 (M2c, Cato/ISC-192): Cato confirmed codex/GPT-5.4 returns 401 on this machine — the genuine cross-vendor audit is infrastructurally unavailable, consistent with standing decision `codex-forge-not-available.md`. Verdict recorded as `skipped`, not `fail`/`concerns` — not a blocker. Did not chase Cato's offered same-family fallback review since it runs on an Anthropic-family model (Opus) and would be redundant with the code-reviewer/silent-failure-hunter passes already run, not a substitute for genuine cross-vendor coverage.
+- 2026-06-25 (M2c, three sign-off decisions confirmed by Jose before EXECUTE): (1) CLI one-liner's `conf:` field is now `coverageConfidence`, with `judgment.confidence` kept visible as `self-reported:` on the same line, never dropped. (2) Narrative renders both confidence values as two always-present lines (`**Confidence (evidence coverage):**` / `**Confidence (model self-reported):**`), never a silent single-value swap. (3) Bucketing thresholds used as planned: ratio===1→high, 0<ratio<1→medium, ratio===0 (tagged>0)→low, tagged===0→high (vacuous).
+- 2026-06-25 (M2c, FirstPrinciples Deconstruct/Challenge/Reconstruct): the coverage ratio (`citedCollectors.size / control.collectors.length`) is uniform-weighted — every tagged collector contributes equally to "how much of what's required." Classified this explicitly: the no-self-report / coverage-not-self-assessment / vacuous-empty-set / cited-not-just-retrieved rules are HARD constraints (directly stated or directly implied by the published essay and the already-shipped SA-10 example); "required = `control.collectors`" is a SOFT constraint (inherits whatever the control author tagged, not a physical fact); the uniform-ratio formula itself is an ASSUMPTION, not a necessity — a future per-collector-weighted variant remains available if a control author ever needs "this one piece of evidence matters more," but building that now would solve a problem the essay never posed, on schema data (`control.collectors`) that doesn't carry weights yet. Decision: ship the uniform ratio; weighting is deliberately out of scope, not overlooked.
+- 2026-06-25 (M2c): coverage mechanics (`calledCollectors`/`citedCollectors`) computed in `agent.ts` (evidence mechanics, where collector identity is in scope); bucketing policy (`evidenceCoverage`/`coverageConfidence`) computed in `assessment-runner.ts` (presentation-ready shaping, same layer as the existing `citedEvidence` precedent from M2a) — keeps `agent.ts`'s return contract about raw signal, not display policy. This split was a Plan-agent recommendation during the plan-mode design pass, adopted as-is.
+- 2026-06-25 (M2c): `Judgment.confidence` (self-reported) and the `submit_judgment` schema are unchanged — `evidenceCoverage`/`coverageConfidence` are purely additive fields on `ControlResult`. Preserves the model-self-report-vs-derived-coverage divergence as a measurable signal for a future essay, and avoids a breaking change to every hand-built `Judgment`/`ControlResult` fixture across the test suite for a problem additive fields solve just as well.
 
 - 2026-06-25 (M2a commit): Stray `.DS_Store` was tracked-but-uncommitted in the working tree; added `.DS_Store` to `.gitignore` and removed the file as part of the M2a commit rather than carrying the cleanup into M2b's diff.
 - 2026-06-25 (M2b, code-reviewer finding — applied): the test fixture exercised only `satisfied`/`partially-satisfied`/`insufficient-evidence`; `not-satisfied` and `not-applicable` had zero test coverage, and "Not Satisfied" is the one label that contains the substring "Satisfied" — exactly the case most likely to leak a status-mapping regression. Fixed by adding `SC-7` (not-satisfied) and `AC-2` (not-applicable) to the fixture and asserting the exact heading string, not a loose substring.
@@ -389,3 +476,16 @@ Deliver a working TypeScript project at `~/Desktop/GitHub/mlassure/` with a pass
 - ISC-156: `Read` of `src/agent/agent.ts` confirms `parseJudgment(block.input, control.id)` is called and its result passed to `validateCitations` before being accepted as `pendingJudgment`.
 - ISC-157: full suite `bun test` → `64 pass, 0 fail, 141 expect() calls. Ran 64 tests across 7 files.` (pre-validator baseline was 52; +12, zero regressions — includes the pre-existing live `agent.test.ts` integration tests, which still pass against the real API with the validator now in the path).
 - ISC-158 (LIVE): two real Anthropic API runs — `model-clean.json` (5 controls, statuses satisfied/satisfied/satisfied/satisfied/insufficient-evidence) and `model-stale.json` (partially-satisfied/not-satisfied/insufficient-evidence among others, confirming the `not-satisfied` real-world case specifically) — both completed with zero `JudgmentShapeError` throws and both wrote valid OSCAL + narrative output files.
+
+### M2c Verification (2026-06-25)
+
+- ISC-159..162: `Read` confirms `agent.ts` builds `evidenceIdToCollector` and `calledCollectors`, returns `citedCollectors` computed from `judgment.evidenceCited`; `bun run typecheck` → exit 0.
+- ISC-163..170, 182..184: `bun test src/runner/assessment-runner.test.ts` (new file) → `3 pass, 0 fail, 16 expect() calls` — full-coverage case (2/2 tagged collectors called+cited → 1.0/high), partial-subset anti-gaming case (1/2 tagged cited despite citing 100% of what was called → 0.5/medium, never high), vacuous case (0 tagged collectors → 1.0/high, `Number.isNaN` confirmed false).
+- ISC-171..174, 185: `bun test src/output/oscal-ar.test.ts` → new test confirms `evidence-coverage`/`coverage-confidence` props present and correct (SI-6(1): "1"/"high", AU-12(3): "0.5"/"medium") alongside the unchanged `confidence` prop; `oscal-types.ts` untouched (`git diff --stat` confirms zero changes to that file).
+- ISC-175..177, 186: `bun test src/output/narrative.test.ts` → 3 new tests confirm both confidence lines present for every control, the self-reported line is never omitted even when identical to coverage (SI-6(1): both "high"), and a real divergence renders correctly (AC-2: coverage "low" vs self-reported "high").
+- ISC-178/179 (LIVE): CLI one-liner on both fixtures shows `conf:high self-reported:high` format for every control — `coverageConfidence` is the primary value, self-reported never dropped.
+- ISC-180/181: `bun run typecheck` → exit 0 after migrating all 7 hand-built `ControlResult` literals (5 in narrative.test.ts, 2 in oscal-ar.test.ts) to include the 5 new required fields.
+- ISC-187: full suite `bun test` → `72 pass, 0 fail, 182 expect() calls. Ran 72 tests across 8 files.` (M1-hardening baseline was 64; +8 net after the advisor-driven tagged-boundary fix added a 4th coverage test, zero regressions).
+- ISC-188 (LIVE): live runs against `model-clean.json` and `model-stale.json` both produced `evidenceCoverage: 1` / `coverageConfidence: "high"` for every control including SA-10 (vacuous) — no NaN, no broken values; programmatic inspection of both OSCAL outputs confirmed via `node -e` one-liners reading the written JSON directly.
+- ISC-189: confirmed across all three surfaces — OSCAL retains the original `confidence` prop unchanged, narrative renders the self-reported line unconditionally, CLI prints `self-reported:` unconditionally.
+- ISC-190/191/192 (delegation review, post-fix): code-reviewer found and I fixed the duplicate-collector denominator bug + documented the unconsumed `collectorsCalled` field; silent-failure-hunter found and I fixed the `deriveCoverageConfidence` fail-loud gap (6 new unit tests) + the duplicate-evidence-id silent-log gap (now `console.error`s with control/collector context) + added a duplicate-`evidenceCited` regression test + a CLI doc comment; Cato returned `skipped` (no codex access, standing limitation, not a blocker). Final full suite after all fixes: `bun test` → `76 pass, 0 fail, 197 expect() calls. Ran 76 tests across 8 files.` Live CLI re-run after every fix confirms unchanged correct behavior (`conf:high self-reported:high` for all 5 controls on the clean fixture, including SA-10).

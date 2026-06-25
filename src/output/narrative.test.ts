@@ -35,6 +35,11 @@ function sampleReport(): AssessmentReport {
             retrievedAt: "2026-06-24T05:59:30.000Z",
           },
         ],
+        evidenceCoverage: 1,
+        collectorsTagged: 2,
+        collectorsCalled: 2,
+        collectorsCited: 2,
+        coverageConfidence: "high",
       },
       {
         controlId: "AU-12(3)",
@@ -56,6 +61,11 @@ function sampleReport(): AssessmentReport {
             retrievedAt: "2026-06-24T05:58:00.000Z",
           },
         ],
+        evidenceCoverage: 0.5,
+        collectorsTagged: 2,
+        collectorsCalled: 2,
+        collectorsCited: 1,
+        coverageConfidence: "medium",
       },
       {
         controlId: "SA-10",
@@ -70,6 +80,11 @@ function sampleReport(): AssessmentReport {
         evidenceCount: 0,
         iterations: 4,
         citedEvidence: [],
+        evidenceCoverage: 1,
+        collectorsTagged: 0,
+        collectorsCalled: 0,
+        collectorsCited: 0,
+        coverageConfidence: "high",
       },
       {
         controlId: "SC-7",
@@ -91,6 +106,11 @@ function sampleReport(): AssessmentReport {
             retrievedAt: "2026-06-24T05:57:00.000Z",
           },
         ],
+        evidenceCoverage: 1,
+        collectorsTagged: 1,
+        collectorsCalled: 1,
+        collectorsCited: 1,
+        coverageConfidence: "high",
       },
       {
         controlId: "AC-2",
@@ -105,6 +125,11 @@ function sampleReport(): AssessmentReport {
         evidenceCount: 0,
         iterations: 1,
         citedEvidence: [],
+        evidenceCoverage: 0,
+        collectorsTagged: 1,
+        collectorsCalled: 1,
+        collectorsCited: 0,
+        coverageConfidence: "low",
       },
     ],
   };
@@ -145,11 +170,11 @@ describe("toNarrativeMarkdown — per-control sections", () => {
     expect(md).toContain("## AC-2: - Not Applicable");
   });
 
-  it("each section renders confidence and the rationale verbatim", () => {
+  it("each section renders both confidence values and the rationale verbatim", () => {
     const md = toNarrativeMarkdown(sampleReport());
-    expect(md).toContain("**Confidence:** high");
+    expect(md).toContain("**Confidence (evidence coverage):** high");
     expect(md).toContain("Data capture enabled and ModelQuality monitor scheduled.");
-    expect(md).toContain("**Confidence:** medium");
+    expect(md).toContain("**Confidence (evidence coverage):** medium");
     expect(md).toContain("Logging present but retention period not configured.");
   });
 });
@@ -260,5 +285,32 @@ describe("toNarrativeMarkdown — hardening against malformed judgment data", ()
     const md = toNarrativeMarkdown(report);
     expect(md).toContain("UNKNOWN (control set version not recorded)");
     expect(md).not.toContain("**Control set:** undefined");
+  });
+});
+
+describe("toNarrativeMarkdown — confidence-as-coverage (M2c)", () => {
+  it("renders both confidence values on two distinct lines for every control", () => {
+    const md = toNarrativeMarkdown(sampleReport());
+    for (const id of ["SI-6(1)", "AU-12(3)", "SA-10", "SC-7", "AC-2"]) {
+      const section = md.split(`## ${id}`)[1]!.split(/\n## /)[0]!;
+      expect(section).toContain("**Confidence (evidence coverage):**");
+      expect(section).toContain("**Confidence (model self-reported):**");
+    }
+  });
+
+  it("never omits the self-reported line even when it matches the coverage value exactly", () => {
+    const md = toNarrativeMarkdown(sampleReport());
+    // SI-6(1): coverageConfidence "high", judgment.confidence "high" — identical values, both lines must still appear.
+    const si6Section = md.split("## SI-6(1)")[1]!.split(/\n## /)[0]!;
+    expect(si6Section).toContain("**Confidence (evidence coverage):** high");
+    expect(si6Section).toContain("**Confidence (model self-reported):** high");
+  });
+
+  it("shows a real divergence when coverage and self-report disagree", () => {
+    const md = toNarrativeMarkdown(sampleReport());
+    // AC-2: coverageConfidence "low" (0/1 tagged collectors cited), judgment.confidence "high" (self-reported).
+    const ac2Section = md.split("## AC-2")[1]!.split(/\n## /)[0]!;
+    expect(ac2Section).toContain("**Confidence (evidence coverage):** low");
+    expect(ac2Section).toContain("**Confidence (model self-reported):** high");
   });
 });

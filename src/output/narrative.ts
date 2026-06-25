@@ -98,7 +98,10 @@ function renderControlSection(result: ControlResult): string {
       : "**[MISSING: agent did not provide a rationale for this judgment — do not treat this control as assessed without investigating.]**";
   const blocks = [
     `## ${result.controlId}: ${statusIcon(j.status, result.controlId)} ${statusLabel(j.status, result.controlId)}`,
-    `**Confidence:** ${j.confidence}`,
+    // Two lines, always both — confidence-as-coverage (M2c) is now the deterministic,
+    // authoritative value, but the model's self-report is never silently dropped:
+    // it's the signal a future essay can use to measure self-report/coverage divergence.
+    `**Confidence (evidence coverage):** ${result.coverageConfidence}\n**Confidence (model self-reported):** ${j.confidence}`,
     rationale,
     `### Evidence\n\n${renderEvidence(result)}`,
     renderGaps(j),

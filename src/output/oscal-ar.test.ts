@@ -39,6 +39,11 @@ function sampleReport(): AssessmentReport {
             retrievedAt: "2026-06-24T05:59:30.000Z",
           },
         ],
+        evidenceCoverage: 1,
+        collectorsTagged: 2,
+        collectorsCalled: 2,
+        collectorsCited: 2,
+        coverageConfidence: "high",
       },
       {
         controlId: "AU-12(3)",
@@ -60,6 +65,11 @@ function sampleReport(): AssessmentReport {
             retrievedAt: "2026-06-24T05:58:00.000Z",
           },
         ],
+        evidenceCoverage: 0.5,
+        collectorsTagged: 2,
+        collectorsCalled: 2,
+        collectorsCited: 1,
+        coverageConfidence: "medium",
       },
     ],
   };
@@ -164,6 +174,19 @@ describe("toOscalAssessmentResults — findings", () => {
       "No retention policy on audit logs",
     ]);
     expect(au12.description).toContain("retention period not configured");
+  });
+
+  it("carries evidence-coverage and coverage-confidence as additive props alongside the unchanged self-reported confidence (M2c)", () => {
+    const result = toOscalAssessmentResults(sampleReport())["assessment-results"]
+      .results[0]!;
+    const si6 = result.findings!.find((f) => f.target["target-id"] === "SI-6(1)")!;
+    const au12 = result.findings!.find((f) => f.target["target-id"] === "AU-12(3)")!;
+    expect(si6.props!.find((p) => p.name === "confidence")!.value).toBe("high");
+    expect(si6.props!.find((p) => p.name === "evidence-coverage")!.value).toBe("1");
+    expect(si6.props!.find((p) => p.name === "coverage-confidence")!.value).toBe("high");
+    expect(au12.props!.find((p) => p.name === "confidence")!.value).toBe("medium");
+    expect(au12.props!.find((p) => p.name === "evidence-coverage")!.value).toBe("0.5");
+    expect(au12.props!.find((p) => p.name === "coverage-confidence")!.value).toBe("medium");
   });
 });
 

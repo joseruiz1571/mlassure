@@ -75,7 +75,11 @@ function buildFinding(
   const j = result.judgment;
   const props: OscalProp[] = [
     { name: "judgment-status", value: j.status, ns: MLASSURE_NS },
+    // "confidence" stays the model's self-report (unchanged field, unchanged meaning).
+    // coverage-confidence is the deterministic value (M2c) — additive, never a replacement.
     { name: "confidence", value: j.confidence, ns: MLASSURE_NS },
+    { name: "evidence-coverage", value: String(result.evidenceCoverage), ns: MLASSURE_NS },
+    { name: "coverage-confidence", value: result.coverageConfidence, ns: MLASSURE_NS },
   ];
   for (const gap of j.gaps) {
     props.push({ name: "gap", value: gap, ns: MLASSURE_NS });
