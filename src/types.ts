@@ -37,6 +37,20 @@ export type Judgment = {
   gaps: string[];
 };
 
+export const JUDGMENT_STATUSES: readonly Judgment["status"][] = [
+  "satisfied",
+  "partially-satisfied",
+  "not-satisfied",
+  "not-applicable",
+  "insufficient-evidence",
+];
+
+export const JUDGMENT_CONFIDENCES: readonly Judgment["confidence"][] = [
+  "high",
+  "medium",
+  "low",
+];
+
 export type ControlItem = {
   id: string;
   framework: string;

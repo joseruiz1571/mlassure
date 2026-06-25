@@ -6,6 +6,7 @@ import { buildToolDefs, SUBMIT_JUDGMENT_TOOL } from "../tools/registry.js";
 import { executeCollector, isKnownCollector } from "../tools/executor.js";
 import { buildSystemPrompt, buildInitialMessage } from "./prompts.js";
 import { validateCitations } from "../guard/citation-guard.js";
+import { parseJudgment } from "../guard/judgment-validator.js";
 
 const MAX_ITERATIONS = 10;
 
@@ -66,16 +67,9 @@ export async function assessControl(
       if (block.type !== "tool_use") continue;
 
       if (block.name === "submit_judgment") {
-        const raw = block.input as Judgment;
-        validateCitations(raw, store);
-        pendingJudgment = {
-          controlId: raw.controlId,
-          status: raw.status,
-          confidence: raw.confidence,
-          rationale: raw.rationale,
-          evidenceCited: raw.evidenceCited,
-          gaps: raw.gaps,
-        };
+        const judgment = parseJudgment(block.input, control.id);
+        validateCitations(judgment, store);
+        pendingJudgment = judgment;
         toolResults.push({
           type: "tool_result",
           tool_use_id: block.id,
