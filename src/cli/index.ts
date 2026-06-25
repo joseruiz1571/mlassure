@@ -1,17 +1,18 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadControlSet } from "../loaders/control-loader.js";
 import { FixtureProvider } from "../providers/fixture-provider.js";
 import { EvidenceStore } from "../store/evidence-store.js";
 import { AnthropicProvider } from "../llm/anthropic-provider.js";
 import { runAssessment } from "../runner/assessment-runner.js";
+import { toOscalAssessmentResults } from "../output/oscal-ar.js";
 import type { AssessmentTarget } from "../types.js";
 
 const USAGE = `
 mlassure — agentic AI-control assurance
 
 Usage:
-  mlassure assess --controls <path> --target <path> [--live]
+  mlassure assess --controls <path> --target <path> [--live] [--oscal <path>]
   mlassure --help
 
 Commands:
@@ -21,6 +22,7 @@ Options:
   --controls <path>   Path to YAML or JSON control set file
   --target <path>     Path to fixture target JSON file
   --live              Run the full agent loop (requires ANTHROPIC_API_KEY in .env)
+  --oscal <path>      Write OSCAL Assessment Results JSON to <path> (implies --live)
   --help, -h          Show this help text
 `.trim();
 
@@ -74,7 +76,8 @@ async function runScaffoldOnly(
 
 async function runLive(
   controlsPath: string,
-  targetPath: string
+  targetPath: string,
+  oscalPath?: string
 ): Promise<void> {
   const controlSet = await loadControlSet(controlsPath);
   const targetJson = JSON.parse(readFileSync(targetPath, "utf-8")) as AssessmentTarget;
@@ -106,6 +109,12 @@ async function runLive(
   }
 
   console.log(`\n${"─".repeat(72)}\n`);
+
+  if (oscalPath) {
+    const oscal = toOscalAssessmentResults(report, controlSet);
+    writeFileSync(oscalPath, JSON.stringify(oscal, null, 2), "utf-8");
+    console.log(`  OSCAL Assessment Results written to ${oscalPath}\n`);
+  }
 }
 
 async function main(): Promise<void> {
@@ -130,9 +139,11 @@ async function main(): Promise<void> {
 
     const absControls = resolve(controls);
     const absTarget = resolve(target);
+    const oscalPath = args["oscal"] ? resolve(args["oscal"]) : undefined;
 
-    if (args["live"]) {
-      await runLive(absControls, absTarget);
+    // --oscal requires a real assessment run, so it implies --live.
+    if (args["live"] || oscalPath) {
+      await runLive(absControls, absTarget, oscalPath);
     } else {
       await runScaffoldOnly(absControls, absTarget);
     }
