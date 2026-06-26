@@ -107,17 +107,20 @@ CLI (assess command)
 - **Tool-use loop** — Anthropic tool-use protocol, `MAX_ITERATIONS=10`, deterministic tool dispatch, citation validation at `submit_judgment` exit (`src/agent/agent.ts`)
 - **Fixture provider** — two fixture models with opposing verdicts (clean vs. stale monitoring) fully implement the `AwsProvider` interface (`src/providers/fixture-provider.ts`)
 
+- **OSCAL Assessment Results output** — fail-closed 5-value→binary projection (`satisfied` judgment only; all others map to `not-satisfied`); full 5-value precision preserved in `judgment-status` prop; loud remarks for `not-applicable` findings (`src/output/oscal-ar.ts`); CLI: `mlassure assess ... --oscal <path>`
+- **Auditor narrative renderer** — Markdown prose from `AssessmentReport`; human-readable judgment summaries per control (`src/output/narrative.ts`)
+- **Confidence as evidence coverage** — derivation of confidence scores from actual retrieved evidence counts rather than model self-report (`src/runner/assessment-runner.ts`; M2c)
+
 **Partial**
 
-- **Pattern differentiation in loop mechanics** — `synthesis`, `sufficiency`, and `correlation` currently differ only in how the control is framed to the model (`PATTERN_DESCRIPTIONS` in `src/agent/prompts.ts`); they share the same loop. Whether the categories warrant separate mechanics — or whether sufficiency and correlation collapse into synthesis — is an M2/M3 design question.
+- **Pattern differentiation in loop mechanics** — `synthesis`, `sufficiency`, and `correlation` currently differ only in how the control is framed to the model (`PATTERN_DESCRIPTIONS` in `src/agent/prompts.ts`); they share the same loop. Whether the categories warrant separate mechanics — or whether sufficiency and correlation collapse into synthesis — is an M3 design question.
 - **LLM bypass for `deterministic` and `attestation`** — both patterns still run the LLM loop; `deterministic` controls produce correct outputs via single-field prompting and `attestation` controls are instructed to return `insufficient-evidence`. Code-level routing that skips the loop for these patterns is a design target.
-- **Confidence as evidence coverage** — the principle (confidence should reflect how much of what the control requires was retrievable, not the model's self-assessment of its own reasoning) is stated in Essay 1 and in the system prompt framing. Current implementation uses model-reported confidence. Derivation from actual evidence coverage is an M2 target.
+- **Custody chain and evidence retention** — mlassure hashes evidence at ingestion and preserves it for the full run; the pattern for signing and retaining artifacts under immutable storage (OIDC-signed, transparency-logged) is implemented in the separate [cgep-capstone](https://github.com/joseruiz1571/cgep-capstone) evidence layer and can be integrated in M3.
+- **Collection scope disclosure** — whether assessed outputs disclose the collectors' IAM scope and retrieval permissions is an M3 design decision.
 
 **Designed**
 
 - **Tag provenance** — tags are static in the current control YAML; versioning with directional migration records is M3 and the subject of Essay 4
-- **OSCAL Assessment Results output** — M2
-- **Auditor narrative renderer** — M2
 - **Broader control coverage** (5–8 controls, including a deliberate insufficient-evidence path) — M3
 - **Docker** — M3
 - **Live AWS read-only provider** — M4
@@ -144,7 +147,7 @@ CLI (assess command)
 |-----------|--------|
 | M0: scaffold (types, control loader, fixture provider, evidence store) | Shipped v0.1.0 |
 | M1: agent loop, citation guard, drift-monitoring end-to-end | Shipped v0.1.0 |
-| M2: OSCAL Assessment Results writer + narrative renderer | Planned |
+| M2: OSCAL Assessment Results writer, auditor narrative renderer, confidence-as-coverage | Shipped (M2a-c, 2026-06-24) |
 | M3: 5-8 controls, Docker, insufficient-evidence path | Planned |
 | M4: live AWS read-only provider | Planned |
 
