@@ -210,3 +210,115 @@ describe("agent loop — unit (no API key required)", () => {
     ).rejects.toThrow("exceeded");
   });
 });
+
+describe("agent loop — attestation pattern bypasses the LLM loop (M3b)", () => {
+  const ATTESTATION_CONTROL: ControlItem = {
+    id: "SA-10-TEST",
+    framework: "SP 800-53",
+    pattern: "attestation",
+    intent: "Requires human sign-off.",
+    collectors: [],
+  };
+
+  function makeCountingLlm(): { llm: LlmProvider; callCount: () => number } {
+    let calls = 0;
+    return {
+      llm: {
+        async complete(): Promise<LlmCompletionResult> {
+          calls++;
+          throw new Error("mockLlm.complete should never be called for an attestation-pattern control");
+        },
+      },
+      callCount: () => calls,
+    };
+  }
+
+  function makeCountingProvider(overrides: Partial<AwsProvider> = {}): {
+    provider: AwsProvider;
+    callCount: () => number;
+  } {
+    let calls = 0;
+    const base = makeProvider(overrides);
+    const wrapped = {} as AwsProvider;
+    for (const key of Object.keys(base) as (keyof AwsProvider)[]) {
+      // @ts-expect-error — dynamically wrapping each collector method to count invocations
+      wrapped[key] = async (...args: unknown[]) => {
+        calls++;
+        // @ts-expect-error — forwarding to the underlying mock implementation
+        return base[key](...args);
+      };
+    }
+    return { provider: wrapped, callCount: () => calls };
+  }
+
+  it("ISC-229/230/231: never calls the LLM or any collector, and returns the exact bypass shape", async () => {
+    const { llm, callCount: llmCalls } = makeCountingLlm();
+    const { provider, callCount: providerCalls } = makeCountingProvider();
+
+    const result = await assessControl(ATTESTATION_CONTROL, MOCK_TARGET, provider, llm);
+
+    expect(llmCalls()).toBe(0);
+    expect(providerCalls()).toBe(0);
+    expect(result.judgment).toEqual({
+      controlId: "SA-10-TEST",
+      status: "insufficient-evidence",
+      confidence: "high",
+      rationale:
+        'This control\'s pattern is "attestation": conformance cannot be determined from automated AWS evidence collection under any circumstance, so no collectors were invoked and no LLM assessment was run.',
+      evidenceCited: [],
+      gaps: [
+        "Requires human attestation — see the control's intent for the specific sign-off required. This verdict was generated directly from the control's pattern, without an LLM call.",
+      ],
+    });
+    expect(result.iterations).toBe(0);
+    expect(result.calledCollectors.size).toBe(0);
+    expect(result.citedCollectors.size).toBe(0);
+  });
+
+  it("ISC-232: a non-attestation control still calls the LLM at least once (bypass gate is not over-broad)", async () => {
+    let calls = 0;
+    const submittingLlm: LlmProvider = {
+      async complete(): Promise<LlmCompletionResult> {
+        calls++;
+        return {
+          stopReason: "tool_use",
+          content: [
+            {
+              type: "tool_use",
+              id: randomUUID(),
+              name: "submit_judgment",
+              input: {
+                controlId: MOCK_CONTROL.id,
+                status: "satisfied",
+                confidence: "high",
+                rationale: "ok",
+                evidenceCited: [],
+                gaps: [],
+              },
+            },
+          ],
+        };
+      },
+    };
+
+    await assessControl(MOCK_CONTROL, MOCK_TARGET, makeProvider(), submittingLlm);
+
+    expect(calls).toBeGreaterThanOrEqual(1);
+  });
+
+  it("ISC-233/ISC-225: an attestation control with non-empty collectors still bypasses, never invoking them", async () => {
+    const attestationWithCollectors: ControlItem = {
+      ...ATTESTATION_CONTROL,
+      id: "SA-10-MISCONFIGURED-TEST",
+      collectors: ["getModelCard", "getEndpointNetworkConfig"],
+    };
+    const { llm } = makeCountingLlm();
+    const { provider, callCount: providerCalls } = makeCountingProvider();
+
+    const result = await assessControl(attestationWithCollectors, MOCK_TARGET, provider, llm);
+
+    expect(providerCalls()).toBe(0);
+    expect(result.judgment.status).toBe("insufficient-evidence");
+    expect(result.calledCollectors.size).toBe(0);
+  });
+});

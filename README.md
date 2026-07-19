@@ -114,7 +114,8 @@ CLI (assess command)
 **Partial**
 
 - **Pattern differentiation in loop mechanics** — `synthesis`, `sufficiency`, and `correlation` currently differ only in how the control is framed to the model (`PATTERN_DESCRIPTIONS` in `src/agent/prompts.ts`); they share the same loop. Whether the categories warrant separate mechanics — or whether sufficiency and correlation collapse into synthesis — is an M3 design question.
-- **LLM bypass for `deterministic` and `attestation`** — both patterns still run the LLM loop; `deterministic` controls produce correct outputs via single-field prompting and `attestation` controls are instructed to return `insufficient-evidence`. Code-level routing that skips the loop for these patterns is a design target.
+- **LLM bypass for `deterministic`** — still runs the LLM loop, producing correct outputs via single-field prompting rather than a code-level check. `attestation` bypass shipped in M3b (below); `deterministic` bypass requires designing a schema for expressing rules in code rather than prose — a larger, still-undecided design target.
+- **Output-layer pattern/provenance awareness** — `narrative.ts`, `oscal-ar.ts`, and `cli/index.ts` all label `judgment.confidence` as "model self-reported" unconditionally; this is now literally false for the M3b attestation-bypass path (confidence is a code literal, never touched by an LLM). Also affects M3a's `RA-3`: its `insufficient-evidence` verdict renders with the same "requires human attestation" callout as true attestation-pattern controls, which is misleading for a synthesis-pattern control with a missing artifact. Both surfaced by delegation review (M3a, M3b), documented in `ISA.md` Decisions, not yet fixed — same underlying gap (no pattern/provenance signal threaded into the output layer), flagged as the next concrete M3 slice.
 - **Custody chain and evidence retention** — mlassure hashes evidence at ingestion and preserves it for the full run; the pattern for signing and retaining artifacts under immutable storage (OIDC-signed, transparency-logged) is implemented in the separate [cgep-capstone](https://github.com/joseruiz1571/cgep-capstone) evidence layer and can be integrated in M3.
 - **Collection scope disclosure** — whether assessed outputs disclose the collectors' IAM scope and retrieval permissions is an M3 design decision.
 
@@ -122,11 +123,14 @@ CLI (assess command)
 
 - **Broader control coverage** — expanded from 5 to 8 controls (`SC-7`, `RA-3`, `CA-7` added), reusing existing collectors and patterns with zero code changes (`fixtures/controls/nist-subset.yaml`). `RA-3` demonstrates a second, structurally distinct insufficient-evidence mechanism: conditional on the target's actual evidence (model card present or absent), reached through LLM reasoning over a genuinely empty tool result, rather than SA-10's statically-empty `collectors: []`. **Live end-to-end verification against both fixtures is `[DEFERRED-VERIFY]`** — no `ANTHROPIC_API_KEY` configured in this checkout; see mlassure `ISA.md` `## Verification` for the specific deferred criteria and follow-up.
 
+**Implemented (M3b, 2026-07-19)**
+
+- **LLM bypass for `attestation`** — `assessControl()` now checks `control.pattern === "attestation"` before any tool/LLM setup and returns a code-generated `insufficient-evidence` judgment directly (`src/agent/agent.ts`). Zero collector calls, zero LLM API calls, for every attestation-pattern control (SA-10 and any future ones) — the "attestation always means insufficient-evidence" guarantee is now a property of the code, not a prompt instruction the model could theoretically ignore. Proven with negative-assertion tests (mock LLM/provider throw if ever invoked), not just judgment-shape checks. `deterministic` bypass remains out of scope (see Partial, above).
+
 **Designed**
 
 - **Tag provenance** — tags are static in the current control YAML; versioning with directional migration records is a later M3 slice and the subject of Essay 4
 - **Docker** — later M3 slice
-- **Pattern differentiation in loop mechanics / LLM bypass routing / custody chain integration** — later M3 slices (see `## M3 Features` in `ISA.md` for what M3a did and did not cover)
 - **Live AWS read-only provider** — M4
 
 ---
@@ -158,7 +162,8 @@ M3a added SC-7, RA-3, and CA-7 by reusing existing collectors and patterns — z
 | M1: agent loop, citation guard, drift-monitoring end-to-end | Shipped v0.1.0 |
 | M2: OSCAL Assessment Results writer, auditor narrative renderer, confidence-as-coverage | Shipped (M2a-c, 2026-06-24) |
 | M3a: 5→8 controls, second insufficient-evidence mechanism | Shipped, live verification DEFERRED (2026-07-19) |
-| M3 (remaining): Docker, pattern differentiation, custody chain, tag provenance | Planned |
+| M3b: attestation-pattern LLM bypass | Shipped, unit-verified (2026-07-19) |
+| M3 (remaining): Docker, deterministic bypass, output-layer pattern/provenance awareness, custody chain, tag provenance | Planned |
 | M4: live AWS read-only provider | Planned |
 
 ---

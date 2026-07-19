@@ -292,26 +292,17 @@ describe("runAssessment — confidence-as-coverage (M2c)", () => {
       collectors: [],
     };
 
+    // As of M3b, attestation-pattern controls bypass the LLM loop entirely
+    // (src/agent/agent.ts) — this mock is intentionally never invoked; it
+    // throws if it ever is, so a bypass regression fails THIS test loudly
+    // instead of silently continuing to pass on a stale premise (the mock
+    // used to simulate the LLM submitting an identical judgment; the test's
+    // coverage-math assertions below are unaffected either way).
     const mockLlm: LlmProvider = {
       async complete(): Promise<LlmCompletionResult> {
-        return {
-          stopReason: "tool_use",
-          content: [
-            {
-              type: "tool_use",
-              id: "tu-1",
-              name: "submit_judgment",
-              input: {
-                controlId: "ATTEST-1",
-                status: "insufficient-evidence",
-                confidence: "high",
-                rationale: "Requires human attestation; nothing AWS-retrievable.",
-                evidenceCited: [],
-                gaps: ["Human sign-off required"],
-              },
-            },
-          ],
-        };
+        throw new Error(
+          "mockLlm.complete should never be called for an attestation-pattern control (M3b bypass)"
+        );
       },
     };
 

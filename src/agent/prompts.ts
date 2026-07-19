@@ -37,8 +37,6 @@ Intent: ${control.intent.trim()}
 4. Form a judgment: satisfied / partially-satisfied / not-satisfied / not-applicable / insufficient-evidence
 5. Call submit_judgment with your structured verdict, citing only evidence IDs you received
 
-For the "attestation" pattern: the correct output is status "insufficient-evidence" with a gaps entry explaining that human attestation is required. Do not mark this as "not-satisfied".
-
 Be direct. If you cannot determine conformance from the evidence available, say "insufficient-evidence" — that is an honest and important outcome, not a failure.`;
 }
 

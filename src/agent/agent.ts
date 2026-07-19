@@ -26,6 +26,32 @@ export async function assessControl(
   provider: AwsProvider,
   llm: LlmProvider
 ): Promise<AssessControlResult> {
+  // Attestation is a property of the PATTERN, not of how many collectors happen
+  // to be tagged — human sign-off cannot be evidenced by any amount of AWS API
+  // data, so this control never invokes the LLM or any collector, regardless of
+  // what `control.collectors` contains. Gating on `collectors.length === 0`
+  // instead would be wrong: it conflates "genuinely requires human attestation"
+  // with "happens to have no collectors configured yet."
+  if (control.pattern === "attestation") {
+    return {
+      judgment: {
+        controlId: control.id,
+        status: "insufficient-evidence",
+        confidence: "high",
+        rationale:
+          "This control's pattern is \"attestation\": conformance cannot be determined from automated AWS evidence collection under any circumstance, so no collectors were invoked and no LLM assessment was run.",
+        evidenceCited: [],
+        gaps: [
+          "Requires human attestation — see the control's intent for the specific sign-off required. This verdict was generated directly from the control's pattern, without an LLM call.",
+        ],
+      },
+      store: new EvidenceStore(),
+      iterations: 0,
+      calledCollectors: new Set(),
+      citedCollectors: new Set(),
+    };
+  }
+
   const store = new EvidenceStore();
   const tools = [...buildToolDefs(control.collectors), SUBMIT_JUDGMENT_TOOL];
   const systemPrompt = buildSystemPrompt(control);
