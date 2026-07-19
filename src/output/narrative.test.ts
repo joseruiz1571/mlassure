@@ -11,6 +11,7 @@ function sampleReport(): AssessmentReport {
     results: [
       {
         controlId: "SI-6(1)",
+        pattern: "synthesis",
         judgment: {
           controlId: "SI-6(1)",
           status: "satisfied",
@@ -43,6 +44,7 @@ function sampleReport(): AssessmentReport {
       },
       {
         controlId: "AU-12(3)",
+        pattern: "correlation",
         judgment: {
           controlId: "AU-12(3)",
           status: "partially-satisfied",
@@ -69,6 +71,7 @@ function sampleReport(): AssessmentReport {
       },
       {
         controlId: "SA-10",
+        pattern: "attestation",
         judgment: {
           controlId: "SA-10",
           status: "insufficient-evidence",
@@ -88,6 +91,7 @@ function sampleReport(): AssessmentReport {
       },
       {
         controlId: "SC-7",
+        pattern: "deterministic",
         judgment: {
           controlId: "SC-7",
           status: "not-satisfied",
@@ -114,6 +118,7 @@ function sampleReport(): AssessmentReport {
       },
       {
         controlId: "AC-2",
+        pattern: "sufficiency",
         judgment: {
           controlId: "AC-2",
           status: "not-applicable",
@@ -179,6 +184,21 @@ describe("toNarrativeMarkdown — per-control sections", () => {
   });
 });
 
+describe("toNarrativeMarkdown — confidence provenance label (M3c)", () => {
+  it("ISC-259: model self-reported label for non-attestation patterns", () => {
+    const md = toNarrativeMarkdown(sampleReport());
+    const si6Section = md.split("## SI-6(1)")[1]!.split("## AU-12(3)")[0]!;
+    expect(si6Section).toContain("**Confidence (model self-reported):** high");
+  });
+
+  it("ISC-258: code-determined label for attestation-pattern controls", () => {
+    const md = toNarrativeMarkdown(sampleReport());
+    const sa10Section = md.split("## SA-10")[1]!.split("## SC-7")[0]!;
+    expect(sa10Section).toContain("**Confidence (code-determined, attestation pattern):** low");
+    expect(sa10Section).not.toContain("model self-reported");
+  });
+});
+
 describe("toNarrativeMarkdown — evidence rendering", () => {
   it("lists exactly one entry per cited evidence item, with id/source/sha256", () => {
     const md = toNarrativeMarkdown(sampleReport());
@@ -195,9 +215,10 @@ describe("toNarrativeMarkdown — evidence rendering", () => {
 });
 
 describe("toNarrativeMarkdown — gaps and human attestation", () => {
-  it("renders a Gaps subsection listing every gap when gaps is non-empty", () => {
+  it("renders a Gaps subsection listing every gap when gaps is non-empty (M3c: heading no longer implies attestation)", () => {
     const md = toNarrativeMarkdown(sampleReport());
-    expect(md).toContain("#### Gaps / Requires Human Attestation");
+    expect(md).toContain("#### Gaps");
+    expect(md).not.toContain("#### Gaps / Requires Human Attestation");
     expect(md).toContain("- No retention policy on audit logs");
   });
 
@@ -206,16 +227,55 @@ describe("toNarrativeMarkdown — gaps and human attestation", () => {
     // SI-6(1) has no gaps.
     const md = toNarrativeMarkdown(report);
     const si6Section = md.split("## AU-12(3)")[0]!;
-    expect(si6Section).not.toContain("Gaps / Requires Human Attestation");
+    expect(si6Section).not.toContain("#### Gaps");
   });
 
-  it("renders a distinct human-attestation callout only for insufficient-evidence", () => {
+  it("ISC-256: renders the true human-attestation callout only for attestation-pattern insufficient-evidence", () => {
     const md = toNarrativeMarkdown(sampleReport());
     expect(md).toContain("**Requires human attestation.**");
     const sa10Section = md.split("## SA-10")[1]!;
     expect(sa10Section).toContain("Requires human attestation");
     const si6Section = md.split("## SI-6(1)")[1]!.split("## AU-12(3)")[0]!;
     expect(si6Section).not.toContain("Requires human attestation");
+  });
+
+  it("ISC-257/246: a non-attestation-pattern control reaching insufficient-evidence gets a distinct callout, never the attestation one", () => {
+    const report: AssessmentReport = {
+      targetName: "churn-predictor-v1",
+      endpointName: "churn-predictor-endpoint",
+      controlSetVersion: "nist-subset-1.0",
+      runAt: "2026-07-19T00:00:00.000Z",
+      results: [
+        {
+          controlId: "RA-3",
+          pattern: "synthesis",
+          judgment: {
+            controlId: "RA-3",
+            status: "insufficient-evidence",
+            confidence: "high",
+            rationale: "No model card evidence is retrievable for this target — nothing to synthesize.",
+            evidenceCited: [],
+            gaps: ["No model card artifact exists for this target."],
+          },
+          evidenceCount: 0,
+          iterations: 2,
+          citedEvidence: [],
+          evidenceCoverage: 0,
+          collectorsTagged: 1,
+          collectorsCalled: 1,
+          collectorsCited: 0,
+          coverageConfidence: "low",
+        },
+      ],
+    };
+    const md = toNarrativeMarkdown(report);
+    expect(md).toContain("**Insufficient evidence.**");
+    // Case-insensitive and heading-inclusive: catches the true attestation callout
+    // AND a stray "Gaps / Requires Human Attestation"-style heading, not just the
+    // exact-case callout string (code-reviewer finding — a lowercase-only check
+    // previously missed the capitalized gaps heading that said the same thing).
+    expect(md.toLowerCase()).not.toContain("requires human attestation");
+    expect(md).not.toContain("attestation` — conformance");
   });
 });
 
@@ -289,13 +349,17 @@ describe("toNarrativeMarkdown — hardening against malformed judgment data", ()
 });
 
 describe("toNarrativeMarkdown — confidence-as-coverage (M2c)", () => {
-  it("renders both confidence values on two distinct lines for every control", () => {
+  it("renders both confidence values on two distinct lines for every control (label is pattern-aware as of M3c)", () => {
     const md = toNarrativeMarkdown(sampleReport());
-    for (const id of ["SI-6(1)", "AU-12(3)", "SA-10", "SC-7", "AC-2"]) {
+    for (const id of ["SI-6(1)", "AU-12(3)", "SC-7", "AC-2"]) {
       const section = md.split(`## ${id}`)[1]!.split(/\n## /)[0]!;
       expect(section).toContain("**Confidence (evidence coverage):**");
       expect(section).toContain("**Confidence (model self-reported):**");
     }
+    // SA-10 is attestation-pattern — its second line is labeled code-determined, not model self-reported.
+    const sa10Section = md.split("## SA-10")[1]!.split(/\n## /)[0]!;
+    expect(sa10Section).toContain("**Confidence (evidence coverage):**");
+    expect(sa10Section).toContain("**Confidence (code-determined, attestation pattern):**");
   });
 
   it("never omits the self-reported line even when it matches the coverage value exactly", () => {

@@ -13,6 +13,24 @@ export const AGENT_PATTERNS: readonly AgentPattern[] = [
   "attestation",
 ];
 
+/**
+ * Two distinct questions that happen to coincide today (only `attestation`
+ * bypasses the LLM loop) but must not be conflated: which pattern authored
+ * the judgment's confidence value (code vs. model), and which pattern's
+ * insufficient-evidence verdict genuinely means "a human must sign off" vs.
+ * "the model couldn't gather enough evidence." Kept as separate named
+ * functions, not one shared boolean, so the day `AgentPattern` gains a
+ * member that decouples them there is exactly one place each to edit —
+ * not a grep across every call site for the right string literal.
+ */
+export function isCodeDetermined(pattern: AgentPattern): boolean {
+  return pattern === "attestation";
+}
+
+export function usesAttestationCallout(pattern: AgentPattern): boolean {
+  return pattern === "attestation";
+}
+
 export type Evidence = {
   id: string;
   source: string;

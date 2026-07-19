@@ -13,6 +13,7 @@
 
 import type { AssessmentReport, ControlResult } from "../runner/assessment-runner.js";
 import type { ControlSet, Judgment } from "../types.js";
+import { isCodeDetermined, usesAttestationCallout } from "../types.js";
 
 const STATUS_LABEL: Record<Judgment["status"], string> = {
   satisfied: "Satisfied",
@@ -71,21 +72,50 @@ function renderEvidence(result: ControlResult): string {
     .join("\n");
 }
 
+/**
+ * M3c: heading no longer says "Requires Human Attestation" — that claim is
+ * status/pattern-specific and belongs solely to `renderAttestationCallout`,
+ * which renders directly below this block. A gaps list on a merely
+ * `partially-satisfied` control (e.g. AU-12(3)) never required attestation;
+ * duplicating the phrase here made that claim for every gapped control,
+ * satisfied ones included, and directly contradicted the new callout's text
+ * for non-attestation insufficient-evidence controls.
+ */
 function renderGaps(judgment: Judgment): string | null {
   if (judgment.gaps.length === 0) return null;
   const items = judgment.gaps
     .map((g) => (g.trim().length > 0 ? `- ${g}` : "- **[MISSING: empty gap description from agent]**"))
     .join("\n");
-  return `#### Gaps / Requires Human Attestation\n\n${items}`;
+  return `#### Gaps\n\n${items}`;
 }
 
-/** Distinct from renderGaps: a control can have gaps without being fully insufficient-evidence; this callout marks the sharper human-attestation boundary case. */
-function renderAttestationCallout(judgment: Judgment): string | null {
-  if (judgment.status !== "insufficient-evidence") return null;
+/**
+ * Distinct from renderGaps: a control can have gaps without being fully
+ * insufficient-evidence; this callout marks the sharper boundary case.
+ *
+ * M3c: gated on the control's PATTERN, not status alone. `insufficient-evidence`
+ * means two different things depending on pattern — for `attestation` controls
+ * it always means "a human must sign off, no amount of AWS evidence resolves
+ * this" (the code-determined bypass case). For any other pattern (e.g. a
+ * `synthesis` control whose only collector genuinely returned nothing for this
+ * target), it means "the model tried and couldn't gather enough evidence" —
+ * a real but different situation that does NOT require human attestation, and
+ * telling an auditor it does misdirects remediation.
+ */
+function renderAttestationCallout(result: ControlResult): string | null {
+  if (result.judgment.status !== "insufficient-evidence") return null;
+  if (usesAttestationCallout(result.pattern)) {
+    return (
+      "> **Requires human attestation.** This control's pattern is `attestation` " +
+      "— conformance cannot be determined from automated AWS evidence under any " +
+      "circumstance. A human reviewer must attest to this control's status directly."
+    );
+  }
   return (
-    "> **Requires human attestation.** mlassure could not gather sufficient " +
-    "evidence to render an automated judgment for this control. A human " +
-    "reviewer must attest to this control's status directly."
+    "> **Insufficient evidence.** mlassure could not gather sufficient evidence " +
+    "to render an automated judgment for this control. Unlike `attestation`-pattern " +
+    "controls, this pattern does not automatically require human sign-off — the " +
+    "correct remediation depends on the specific gap, if one is listed above."
   );
 }
 
@@ -101,11 +131,14 @@ function renderControlSection(result: ControlResult): string {
     // Two lines, always both — confidence-as-coverage (M2c) is now the deterministic,
     // authoritative value, but the model's self-report is never silently dropped:
     // it's the signal a future essay can use to measure self-report/coverage divergence.
-    `**Confidence (evidence coverage):** ${result.coverageConfidence}\n**Confidence (model self-reported):** ${j.confidence}`,
+    // M3c: the second line's label is pattern-aware — for attestation-pattern controls
+    // the confidence value is a code literal (agent.ts's bypass), never touched by an
+    // LLM, so calling it "model self-reported" would be false, not just imprecise.
+    `**Confidence (evidence coverage):** ${result.coverageConfidence}\n**Confidence (${isCodeDetermined(result.pattern) ? "code-determined, attestation pattern" : "model self-reported"}):** ${j.confidence}`,
     rationale,
     `### Evidence\n\n${renderEvidence(result)}`,
     renderGaps(j),
-    renderAttestationCallout(j),
+    renderAttestationCallout(result),
   ].filter((block): block is string => block !== null);
   return blocks.join("\n\n");
 }

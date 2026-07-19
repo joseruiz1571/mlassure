@@ -1,4 +1,4 @@
-import type { ControlSet, AssessmentTarget, Judgment } from "../types.js";
+import type { ControlSet, AssessmentTarget, Judgment, AgentPattern } from "../types.js";
 import type { AwsProvider } from "../providers/aws-provider.interface.js";
 import type { LlmProvider } from "../llm/llm-provider.interface.js";
 import { assessControl } from "../agent/agent.js";
@@ -13,6 +13,15 @@ export type CitedEvidence = {
 
 export type ControlResult = {
   controlId: string;
+  /**
+   * The control's declared pattern, copied at construction time. Verified
+   * (M3c) to always match the pattern actually used to produce `judgment` —
+   * `agent.ts` has exactly one pattern-runtime-branch (the attestation
+   * bypass) and no fallback that could execute a different mechanism than
+   * declared. Re-verify this invariant if a future change (e.g. deterministic
+   * bypass) introduces a runtime fallback between patterns.
+   */
+  pattern: AgentPattern;
   judgment: Judgment;
   evidenceCount: number;
   iterations: number;
@@ -114,6 +123,7 @@ export async function runAssessment(
 
     results.push({
       controlId: control.id,
+      pattern: control.pattern,
       judgment,
       evidenceCount: store.size(),
       iterations,

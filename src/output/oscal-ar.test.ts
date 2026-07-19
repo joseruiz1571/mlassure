@@ -15,6 +15,7 @@ function sampleReport(): AssessmentReport {
     results: [
       {
         controlId: "SI-6(1)",
+        pattern: "synthesis",
         judgment: {
           controlId: "SI-6(1)",
           status: "satisfied",
@@ -47,6 +48,7 @@ function sampleReport(): AssessmentReport {
       },
       {
         controlId: "AU-12(3)",
+        pattern: "correlation",
         judgment: {
           controlId: "AU-12(3)",
           status: "partially-satisfied",
@@ -187,6 +189,48 @@ describe("toOscalAssessmentResults — findings", () => {
     expect(au12.props!.find((p) => p.name === "confidence")!.value).toBe("medium");
     expect(au12.props!.find((p) => p.name === "evidence-coverage")!.value).toBe("0.5");
     expect(au12.props!.find((p) => p.name === "coverage-confidence")!.value).toBe("medium");
+  });
+
+  it("ISC-260: carries the raw pattern as an additive prop, for both attestation and non-attestation findings", () => {
+    const report: AssessmentReport = {
+      targetName: "fraud-detector-v2",
+      endpointName: "fraud-detector-v2-endpoint",
+      controlSetVersion: "nist-subset-1.0",
+      runAt: "2026-06-24T06:00:00.000Z",
+      results: [
+        {
+          controlId: "SA-10",
+          pattern: "attestation",
+          judgment: {
+            controlId: "SA-10",
+            status: "insufficient-evidence",
+            confidence: "high",
+            rationale:
+              'This control\'s pattern is "attestation": conformance cannot be determined from automated AWS evidence collection under any circumstance, so no collectors were invoked and no LLM assessment was run.',
+            evidenceCited: [],
+            gaps: ["Requires human attestation — see the control's intent for the specific sign-off required."],
+          },
+          evidenceCount: 0,
+          iterations: 0,
+          citedEvidence: [],
+          evidenceCoverage: 1,
+          collectorsTagged: 0,
+          collectorsCalled: 0,
+          collectorsCited: 0,
+          coverageConfidence: "high",
+        },
+      ],
+    };
+    const result = toOscalAssessmentResults(sampleReport())["assessment-results"].results[0]!;
+    const si6 = result.findings!.find((f) => f.target["target-id"] === "SI-6(1)")!;
+    expect(si6.props!.find((p) => p.name === "pattern")!.value).toBe("synthesis");
+
+    const attestationResult = toOscalAssessmentResults(report)["assessment-results"].results[0]!;
+    const sa10 = attestationResult.findings!.find((f) => f.target["target-id"] === "SA-10")!;
+    expect(sa10.props!.find((p) => p.name === "pattern")!.value).toBe("attestation");
+    // "confidence" is still emitted, but a consumer must check "pattern" to know
+    // this one is code-determined, not the model's self-report.
+    expect(sa10.props!.find((p) => p.name === "confidence")!.value).toBe("high");
   });
 });
 
