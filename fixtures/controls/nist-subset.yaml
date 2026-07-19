@@ -52,3 +52,40 @@ controls:
       from AWS and requires human attestation via a linked artifact.
     collectors: []
     note: "Deliberate insufficient-evidence case — correct output is requires-human-attestation"
+
+  - id: "SC-7"
+    framework: "SP 800-53 Rev 5"
+    pattern: deterministic
+    intent: >
+      The model endpoint runs inside network isolation with a VPC and at least
+      one security group attached. This is a binary check with exactly three
+      required conditions: network isolation enabled, a VPC present, and at
+      least one security group attached. All three must hold, or the control fails —
+      no partial credit, no judgment required.
+    collectors:
+      - getEndpointNetworkConfig
+
+  - id: "RA-3"
+    framework: "SP 800-53 Rev 5"
+    pattern: synthesis
+    intent: >
+      A documented risk assessment exists for the model, synthesizing the model
+      card's stated risk rating against its declared intended uses and limitations,
+      and confirming the evaluation details support that rating. If no model card
+      evidence is retrievable for this target, there is nothing to synthesize —
+      the correct output is insufficient-evidence, not a pass or fail guess.
+    collectors:
+      - getModelCard
+    note: "Insufficient-evidence here is conditional, not hardcoded — it depends on whether this target's model card evidence exists at assessment time, distinct from SA-10's always-empty collector list."
+
+  - id: "CA-7"
+    framework: "SP 800-53 Rev 5"
+    pattern: sufficiency
+    intent: >
+      Every monitoring schedule configured for this endpoint is actually executing
+      successfully — not merely configured. A monitor whose most recent run failed
+      means the continuous-monitoring program is not operating as intended, regardless
+      of how many monitors exist or whether they're scheduled. This is distinct from
+      SI-6(1), which checks whether performance monitoring is configured at all.
+    collectors:
+      - getModelMonitorSchedules

@@ -11,7 +11,7 @@ Agentic AI-control assurance. Point it at an ML model and a control set; it coll
 Most LLM-based compliance tools let the model reason freely about whether controls are satisfied. That produces confident-sounding verdicts with no verifiable link to the evidence behind them. MLAssure separates the concerns:
 
 - **Deterministic collectors** fetch raw evidence from AWS (or fixtures) — no LLM involved
-- **Agent pattern tags** on each control determine whether LLM judgment is needed at all (`synthesis`, `sufficiency`, `correlation`) or whether the answer is deterministic (`deterministic`) or requires human attestation (`attestation`)
+- **Agent pattern tags** on each control determine whether LLM judgment is needed at all (`synthesis`, `sufficiency`, `correlation`) or whether the answer is deterministic (`deterministic`) or requires human attestation (`attestation`) — or, distinctly, whether the evidence needed simply doesn't exist for this target at assessment time (`insufficient-evidence`, which any pattern can reach if its collectors come back empty)
 - **Citation guard** rejects any judgment that cites evidence not retrieved in this run
 
 The result: every verdict is either deterministic (code verified it) or agentic with a paper trail (the LLM cited the specific artifacts it used to reason).
@@ -118,18 +118,22 @@ CLI (assess command)
 - **Custody chain and evidence retention** — mlassure hashes evidence at ingestion and preserves it for the full run; the pattern for signing and retaining artifacts under immutable storage (OIDC-signed, transparency-logged) is implemented in the separate [cgep-capstone](https://github.com/joseruiz1571/cgep-capstone) evidence layer and can be integrated in M3.
 - **Collection scope disclosure** — whether assessed outputs disclose the collectors' IAM scope and retrieval permissions is an M3 design decision.
 
+**Implemented (M3a, 2026-07-19)**
+
+- **Broader control coverage** — expanded from 5 to 8 controls (`SC-7`, `RA-3`, `CA-7` added), reusing existing collectors and patterns with zero code changes (`fixtures/controls/nist-subset.yaml`). `RA-3` demonstrates a second, structurally distinct insufficient-evidence mechanism: conditional on the target's actual evidence (model card present or absent), reached through LLM reasoning over a genuinely empty tool result, rather than SA-10's statically-empty `collectors: []`. **Live end-to-end verification against both fixtures is `[DEFERRED-VERIFY]`** — no `ANTHROPIC_API_KEY` configured in this checkout; see mlassure `ISA.md` `## Verification` for the specific deferred criteria and follow-up.
+
 **Designed**
 
-- **Tag provenance** — tags are static in the current control YAML; versioning with directional migration records is M3 and the subject of Essay 4
-- **Broader control coverage** (5–8 controls, including a deliberate insufficient-evidence path) — M3
-- **Docker** — M3
+- **Tag provenance** — tags are static in the current control YAML; versioning with directional migration records is a later M3 slice and the subject of Essay 4
+- **Docker** — later M3 slice
+- **Pattern differentiation in loop mechanics / LLM bypass routing / custody chain integration** — later M3 slices (see `## M3 Features` in `ISA.md` for what M3a did and did not cover)
 - **Live AWS read-only provider** — M4
 
 ---
 
 ## Control set
 
-`fixtures/controls/nist-subset.yaml` maps five NIST SP 800-53 Rev 5 controls to SageMaker evidence collectors:
+`fixtures/controls/nist-subset.yaml` maps eight NIST SP 800-53 Rev 5 controls to SageMaker evidence collectors:
 
 | Control | Title | Pattern |
 |---------|-------|---------|
@@ -138,6 +142,11 @@ CLI (assess command)
 | AU-12(3) | Changes by Authorized Individuals | correlation |
 | SC-28 | Protection of Information at Rest | deterministic |
 | SA-10 | Developer Configuration Management / Human Review | attestation |
+| SC-7 | Boundary Protection (network isolation) | deterministic |
+| RA-3 | Risk Assessment (model card synthesis) | synthesis |
+| CA-7 | Continuous Monitoring (monitor health, not just presence) | sufficiency |
+
+M3a added SC-7, RA-3, and CA-7 by reusing existing collectors and patterns — zero changes to the control loader, provider interface, or fixture provider. RA-3 is notable: unlike SA-10 (which never attempts collection), RA-3's `insufficient-evidence` outcome on the stale fixture is conditional — `getModelCard` genuinely returns nothing for that target, so the LLM reasons its way to insufficient-evidence rather than the pattern being statically wired that way.
 
 ---
 
@@ -148,7 +157,8 @@ CLI (assess command)
 | M0: scaffold (types, control loader, fixture provider, evidence store) | Shipped v0.1.0 |
 | M1: agent loop, citation guard, drift-monitoring end-to-end | Shipped v0.1.0 |
 | M2: OSCAL Assessment Results writer, auditor narrative renderer, confidence-as-coverage | Shipped (M2a-c, 2026-06-24) |
-| M3: 5-8 controls, Docker, insufficient-evidence path | Planned |
+| M3a: 5→8 controls, second insufficient-evidence mechanism | Shipped, live verification DEFERRED (2026-07-19) |
+| M3 (remaining): Docker, pattern differentiation, custody chain, tag provenance | Planned |
 | M4: live AWS read-only provider | Planned |
 
 ---
