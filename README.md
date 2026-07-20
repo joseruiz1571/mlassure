@@ -45,6 +45,46 @@ bun run dev -- assess \
 
 ---
 
+## Docker
+
+> **Status: designed, statically verified, build/run NOT yet tested** — Docker wasn't installed on the machine that wrote this Dockerfile. Every claim below is a design intent, not a confirmed result. See `ISA.md` `## Verification` for the exact command sequence to run when Docker is available, and `TODO-m3e-docker-build-verify`.
+
+```bash
+docker build -t mlassure .
+
+# Zero-setup demo — fixtures are baked into the image
+docker run --rm -e ANTHROPIC_API_KEY mlassure assess \
+  --controls fixtures/controls/nist-subset.yaml \
+  --target fixtures/targets/model-clean.json \
+  --live
+```
+
+The `-e ANTHROPIC_API_KEY` form (no `=value`) inherits the variable from your host shell's environment rather than putting the key on the command line — it never lands in shell history.
+
+Real target, with output written back to the host:
+
+```bash
+mkdir -p out
+docker run --rm -e ANTHROPIC_API_KEY -v "$(pwd)/out:/out" mlassure assess \
+  --controls /out/my-controls.yaml \
+  --target /out/my-target.json \
+  --live \
+  --oscal /out/results.json \
+  --narrative /out/report.md
+```
+
+If the mounted `out/` directory was created by a different host user/UID than the container expects, writes can silently fail with a permissions error. Fix with:
+
+```bash
+docker run --rm --user "$(id -u):$(id -g)" -e ANTHROPIC_API_KEY -v "$(pwd)/out:/out" mlassure assess ...
+```
+
+**⚠️ `--oscal`/`--narrative` paths must point INSIDE a mounted volume, or the output is silently destroyed.** `--rm` deletes the container's writable layer on exit — if you pass `--oscal /out/results.json` without `-v "$(pwd)/out:/out"`, the write succeeds *inside* the container, the CLI reports success truthfully, and the file vanishes the instant the container exits. No error, no warning, nothing on disk. Always pair `--oscal`/`--narrative` output paths with a matching `-v` mount to the same directory (silent-failure-hunter finding, M3e).
+
+The image never bakes in `ANTHROPIC_API_KEY` — no build `ARG`, no `ENV` with a value — and runs as the base image's non-root `bun` user, never root.
+
+---
+
 ## Demo output
 
 `fraud-detection-v2` — clean monitoring setup, all 8 controls:
@@ -139,10 +179,13 @@ CLI (assess command)
 
 - **LLM bypass for `deterministic`** — `assessControl()` now dispatches `pattern: deterministic` controls to a per-control-ID registry of real TypeScript check functions (`src/agent/deterministic-checks.ts`), not a rule DSL or eval'd expression — mirroring how collectors are already dispatched by name. `SC-28` (customer-managed KMS key check) and `SC-7` (network isolation + VPC + security group check) both ship real, live-verified implementations; both route through the same `EvidenceStore`/citation-guard discipline as the LLM path, so the citation invariant holds for code-determined judgments too. **Fail-loud by design, no silent fallback**: a `deterministic`-pattern control with no registered check aborts the entire run (`runAssessment()`'s preflight, listing every missing check at once) before any control — deterministic or not — is assessed, rather than silently falling back to the LLM and producing a report that misrepresents its own provenance. `isCodeDetermined` (`src/types.ts`) generalizes to cover both `attestation` and `deterministic` as a pure derived function over `pattern` — structurally incapable of diverging from what actually ran. Delegation review on this fix found and fixed 2 real gaps before shipping: deterministic-check judgments weren't running through the same `parseJudgment`/`validateCitations` guards the LLM path is forced through (now they do, via a shared `finalizeJudgment` helper), and unguarded type casts on evidence payloads could have silently turned a malformed/unexpected shape into a confidently-wrong `not-satisfied` verdict instead of an honest `insufficient-evidence` one (now type-guarded). Live-verified against both fixtures: identical verdicts to the prior LLM-driven run, now `code-determined` instead of `self-reported`, zero LLM calls.
 
+**Implemented (M3e, 2026-07-19) — design + static verification complete, build/run DEFERRED-VERIFY**
+
+- **Docker packaging** — multi-stage `Dockerfile` (`deps` → `runtime`, both pinned to the same `oven/bun:1.2-slim` tag), non-root (`bun` user, uid 1000, reused from the base image), `ANTHROPIC_API_KEY` injected only via `docker run -e` (never a build `ARG`, never baked in — confirmed via grep, and fixtures independently confirmed clean of any real key before being baked into the image). No Docker install existed on the machine that wrote this, so `docker build`/`docker run` are `[DEFERRED-VERIFY]` — see `ISA.md` `## Verification` for the exact command checklist (`TODO-m3e-docker-build-verify`). Several design claims WERE empirically confirmed without Docker, using the locally-installed Bun directly: `bun install --frozen-lockfile --production` correctly excludes dev dependencies (verified twice, independently), and the `ENTRYPOINT`/`CMD` argument-forwarding shape matches `docker run <image> assess ...`'s intended invocation. The base image's `bun` user/home assumptions were confirmed by reading `oven/bun`'s actual upstream Dockerfile source, not assumed. Delegation review found and fixed a real data-loss trap: `--oscal`/`--narrative` output paths passed without a matching `-v` volume mount write successfully inside the container, report success truthfully, then vanish silently when `--rm` destroys the container — now loudly documented in the Docker quick-start.
+
 **Designed**
 
 - **Tag provenance** — tags are static in the current control YAML; versioning with directional migration records is a later M3 slice and the subject of Essay 4
-- **Docker** — later M3 slice
 - **Live AWS read-only provider** — M4
 
 ---
@@ -177,7 +220,8 @@ M3a added SC-7, RA-3, and CA-7 by reusing existing collectors and patterns — z
 | M3b: attestation-pattern LLM bypass | Shipped, unit-verified (2026-07-19) |
 | M3c: output-layer pattern/provenance awareness | Shipped, unit-verified (2026-07-19) |
 | M3d: deterministic-pattern LLM bypass (SC-28, SC-7) | Shipped, live-verified (2026-07-19) |
-| M3 (remaining): Docker, custody chain, tag provenance | Planned |
+| M3e: Docker packaging | Designed + statically verified, build/run DEFERRED (2026-07-19) |
+| M3 (remaining): custody chain, tag provenance | Planned |
 | M4: live AWS read-only provider | Planned |
 
 ---

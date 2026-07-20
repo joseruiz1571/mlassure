@@ -1,0 +1,21 @@
+# The actual protection against a secret leaking into the image — a
+# COPY . . style mistake elsewhere would bake .env into a layer even if
+# the application never reads it at runtime. This line is what protects
+# against that, not the absence of an ARG/ENV in the Dockerfile alone.
+.env
+.env.*
+.env.local
+
+.git
+node_modules
+dist
+
+# Demo recordings and dev-only artifacts, not needed at runtime.
+demo/
+# .dockerignore patterns use Go filepath.Match, which does NOT cross "/" —
+# a bare `*.test.ts` only matches root-level files. Every test file in this
+# repo lives under src/ (e.g. src/agent/agent.test.ts), so `**/*.test.ts`
+# is required for this line to exclude anything at all (code-reviewer
+# finding, M3e: the un-globbed version silently excluded zero files).
+**/*.test.ts
+ISA.md

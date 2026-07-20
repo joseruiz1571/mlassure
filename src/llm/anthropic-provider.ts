@@ -19,7 +19,7 @@ export class AnthropicProvider implements LlmProvider {
     const apiKey = options.apiKey ?? process.env["ANTHROPIC_API_KEY"];
     if (!apiKey) {
       throw new Error(
-        "ANTHROPIC_API_KEY is required. Set it in .env or pass it to AnthropicProvider."
+        "ANTHROPIC_API_KEY is required. Set it in .env, pass it to AnthropicProvider, or (in Docker) run with -e ANTHROPIC_API_KEY."
       );
     }
     this.client = new Anthropic({ apiKey });
