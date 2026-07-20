@@ -47,27 +47,33 @@ bun run dev -- assess \
 
 ## Demo output
 
-`fraud-detection-v2` — clean monitoring setup:
+`fraud-detection-v2` — clean monitoring setup, all 8 controls:
 
 ```
-  ✓ SI-6(1)      satisfied              conf:high    evidence:5
-  ✓ AC-6(9)      satisfied              conf:high    evidence:1
-  ✓ AU-12(3)     satisfied              conf:high    evidence:3
-  ✓ SC-28        satisfied              conf:high    evidence:1
-  ? SA-10        insufficient-evidence  conf:high    evidence:0
+  ✓ SI-6(1)      satisfied              conf:high    self-reported:high    evidence:5
+  ✓ AC-6(9)      satisfied              conf:high    self-reported:high    evidence:1
+  ✓ AU-12(3)     satisfied              conf:high    self-reported:high    evidence:3
+  ✓ SC-28        satisfied              conf:high    self-reported:high    evidence:1
+  ? SA-10        insufficient-evidence  conf:high    code-determined:high    evidence:0
+  ✓ SC-7         satisfied              conf:high    self-reported:high    evidence:1
+  ✓ RA-3         satisfied              conf:high    self-reported:high    evidence:1
+  ✓ CA-7         satisfied              conf:high    self-reported:high    evidence:3
 ```
 
-`churn-predictor-v1` — data capture disabled, no ModelQuality monitor, overly broad IAM:
+`churn-predictor-v1` — data capture disabled, no ModelQuality monitor, overly broad IAM, no model card, no VPC isolation:
 
 ```
-  ✗ SI-6(1)      not-satisfied          conf:high    evidence:3
-  ✗ AC-6(9)      not-satisfied          conf:high    evidence:1
-  ~ AU-12(3)     partially-satisfied    conf:high    evidence:3
-  ✗ SC-28        not-satisfied          conf:high    evidence:1
-  ? SA-10        insufficient-evidence  conf:high    evidence:0
+  ✗ SI-6(1)      not-satisfied          conf:high    self-reported:high    evidence:3
+  ✗ AC-6(9)      not-satisfied          conf:high    self-reported:high    evidence:1
+  ~ AU-12(3)     partially-satisfied    conf:high    self-reported:high    evidence:3
+  ✗ SC-28        not-satisfied          conf:high    self-reported:high    evidence:1
+  ? SA-10        insufficient-evidence  conf:high    code-determined:high    evidence:0
+  ✗ SC-7         not-satisfied          conf:high    self-reported:high    evidence:1
+  ? RA-3         insufficient-evidence  conf:low     self-reported:high    evidence:0
+  ✗ CA-7         not-satisfied          conf:high    self-reported:high    evidence:1
 ```
 
-SA-10 (human attestation) is deliberately `insufficient-evidence` on both — machine-readable evidence cannot substitute for a named reviewer's sign-off. The system knows what it cannot determine.
+SA-10 (`attestation` pattern) is deliberately `insufficient-evidence` on both, `code-determined` — no LLM call was made; machine-readable evidence cannot substitute for a named reviewer's sign-off, and the codebase now guarantees this at the code level (M3b). RA-3 (`synthesis` pattern) shows the *other* insufficient-evidence shape: `satisfied` on the clean target (a real model card exists to synthesize), `insufficient-evidence` on the stale one (no model card was retrievable — `self-reported`, an LLM reasoned its way there from a genuinely empty tool result, not a static rule). Two different mechanisms, two different labels, both honest about what they actually know.
 
 ---
 
@@ -120,7 +126,7 @@ CLI (assess command)
 
 **Implemented (M3a, 2026-07-19)**
 
-- **Broader control coverage** — expanded from 5 to 8 controls (`SC-7`, `RA-3`, `CA-7` added), reusing existing collectors and patterns with zero code changes (`fixtures/controls/nist-subset.yaml`). `RA-3` demonstrates a second, structurally distinct insufficient-evidence mechanism: conditional on the target's actual evidence (model card present or absent), reached through LLM reasoning over a genuinely empty tool result, rather than SA-10's statically-empty `collectors: []`. **Live end-to-end verification against both fixtures is `[DEFERRED-VERIFY]`** — no `ANTHROPIC_API_KEY` configured in this checkout; see mlassure `ISA.md` `## Verification` for the specific deferred criteria and follow-up.
+- **Broader control coverage** — expanded from 5 to 8 controls (`SC-7`, `RA-3`, `CA-7` added), reusing existing collectors and patterns with zero code changes (`fixtures/controls/nist-subset.yaml`). `RA-3` demonstrates a second, structurally distinct insufficient-evidence mechanism: conditional on the target's actual evidence (model card present or absent), reached through LLM reasoning over a genuinely empty tool result, rather than SA-10's statically-empty `collectors: []`. Live end-to-end verification against both fixtures confirmed 2026-07-19 (see [Demo output](#demo-output) above, now showing all 8 controls) — `TODO-m3a-live-verify` closed.
 
 **Implemented (M3b, 2026-07-19)**
 
@@ -164,7 +170,7 @@ M3a added SC-7, RA-3, and CA-7 by reusing existing collectors and patterns — z
 | M0: scaffold (types, control loader, fixture provider, evidence store) | Shipped v0.1.0 |
 | M1: agent loop, citation guard, drift-monitoring end-to-end | Shipped v0.1.0 |
 | M2: OSCAL Assessment Results writer, auditor narrative renderer, confidence-as-coverage | Shipped (M2a-c, 2026-06-24) |
-| M3a: 5→8 controls, second insufficient-evidence mechanism | Shipped, live verification DEFERRED (2026-07-19) |
+| M3a: 5→8 controls, second insufficient-evidence mechanism | Shipped, live-verified (2026-07-19) |
 | M3b: attestation-pattern LLM bypass | Shipped, unit-verified (2026-07-19) |
 | M3c: output-layer pattern/provenance awareness | Shipped, unit-verified (2026-07-19) |
 | M3 (remaining): Docker, deterministic bypass, custody chain, tag provenance | Planned |

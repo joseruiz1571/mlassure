@@ -1,15 +1,15 @@
 ---
-task: mlassure M3c — output-layer pattern/provenance awareness (closes M3a + M3b review findings)
-slug: mlassure-m3c
-effort: E3
+task: mlassure M3a live verification — TODO-m3a-live-verify closeout
+slug: mlassure-m3a-live-verify
+effort: E2
 phase: complete
-progress: 27/27
+progress: 7/7
 mode: algorithm
 started: 2026-07-19T00:00:00Z
 updated: 2026-07-19T00:00:00Z
 project: mlassure
-effort_source: classifier
-prior_phase_note: "M3a complete at 19/26 (7 DEFERRED-VERIFY); M3b complete at 19/19 — see their sections above"
+effort_source: context-override
+prior_phase_note: "M3a/M3b/M3c complete — see their sections above. This closes M3a's 7 DEFERRED-VERIFY criteria (ISC-206-211, ISC-214) now that ANTHROPIC_API_KEY is configured."
 ---
 
 ## Problem
@@ -442,17 +442,17 @@ Deliver a working TypeScript project at `~/Desktop/GitHub/mlassure/` with a pass
 - [x] ISC-205: `model-clean.json`'s 3 `monitors[]` entries all have `lastRunStatus: "Completed"`; `model-stale.json`'s single monitor entry has `lastRunStatus: "Failed"` (already true — re-confirmed)
 
 **Live verification**
-- [DEFERRED-VERIFY] ISC-206 (LIVE): live CLI run against `model-clean.json` prints 8 control rows, not 5 — no `ANTHROPIC_API_KEY` in this checkout; follow-up `TODO-m3a-live-verify`
-- [DEFERRED-VERIFY] ISC-207 (LIVE): live CLI run against `model-stale.json` prints 8 control rows, not 5 — follow-up `TODO-m3a-live-verify`
-- [DEFERRED-VERIFY] ISC-208 (LIVE): SC-7 renders `satisfied` on clean, `not-satisfied` on stale — follow-up `TODO-m3a-live-verify`
-- [DEFERRED-VERIFY] ISC-209 (LIVE): RA-3 renders a non-`insufficient-evidence` status on clean (model card present) and `insufficient-evidence` on stale (model card null) — follow-up `TODO-m3a-live-verify`; NOTE per silent-failure-hunter Finding 2, the narrative will currently mislabel this as "requires human attestation" — see Decisions, not blocking this ISC but blocking full trust in the rendered output
-- [DEFERRED-VERIFY] ISC-210 (LIVE): CA-7 renders `satisfied` on clean (all monitors Completed), `not-satisfied` on stale (the one present monitor Failed) — follow-up `TODO-m3a-live-verify`; NOTE per silent-failure-hunter Finding 1, a `satisfied` verdict on clean cannot currently be trusted to mean "the agent checked all 3 monitors" rather than "the agent checked 1 of 3 and got lucky" — see Decisions
-- [DEFERRED-VERIFY] ISC-211 (LIVE): SA-10 is unaffected — still `insufficient-evidence` on both fixtures (Anti: existing control behavior does not regress) — follow-up `TODO-m3a-live-verify`
+- [x] ISC-206 (LIVE): live CLI run against `model-clean.json` prints 8 control rows, not 5 — confirmed 2026-07-19, `TODO-m3a-live-verify` closed
+- [x] ISC-207 (LIVE): live CLI run against `model-stale.json` prints 8 control rows, not 5 — confirmed 2026-07-19
+- [x] ISC-208 (LIVE): SC-7 renders `satisfied` on clean, `not-satisfied` on stale — confirmed exactly as designed
+- [x] ISC-209 (LIVE): RA-3 renders a non-`insufficient-evidence` status on clean (`satisfied`, model card present) and `insufficient-evidence` on stale (`conf:low self-reported:high`, model card null, gap text names the missing artifact explicitly) — confirmed exactly as designed, including the M3c fix: narrative correctly labels this "self-reported" (synthesis pattern, LLM-authored), not the attestation-callout text
+- [x] ISC-210 (LIVE): CA-7 renders `satisfied` on clean (all monitors Completed), `not-satisfied` on stale (the one present monitor Failed) — confirmed exactly as designed
+- [x] ISC-211 (LIVE): SA-10 unaffected — `insufficient-evidence`, `code-determined:high`, zero evidence, identical gap text on both fixtures — confirmed the M3b bypass behaves identically regardless of target
 - [x] ISC-212: `bun test` exits 0 with pass count ≥ the 74-pass / 190-expect() baseline captured before this milestone (Anti: no silent test-count drop from a broken fixture load) — `74 pass, 2 skip, 0 fail, 190 expect() calls` after the YAML change, matches baseline exactly
 
 **README sync**
 - [x] ISC-213: README control table lists all 8 controls with id/title/pattern
-- [DEFERRED-VERIFY] ISC-214: README demo output blocks show 8 rows per fixture, not 5 — depends on ISC-206/207 live output; deferred, not fabricated; follow-up `TODO-m3a-live-verify`
+- [x] ISC-214: README demo output blocks show 8 rows per fixture, not 5 — updated with real captured live output (2026-07-19), including the new `self-reported`/`code-determined` labels (M3c) and RA-3's live conditional-insufficiency demonstration on the stale fixture
 - [x] ISC-215: README Implementation Ledger moves "Broader control coverage" from Designed to Implemented, with the RA-3 conditional-insufficiency mechanism named explicitly and the DEFERRED-VERIFY status disclosed inline
 - [x] ISC-216: README Status table's M3 row reflects "5→8 controls" as shipped-with-deferred-verification; Docker/pattern-differentiation/custody-chain/tag-provenance correctly left under "M3 (remaining): Planned"
 
@@ -608,6 +608,7 @@ Deliver a working TypeScript project at `~/Desktop/GitHub/mlassure/` with a pass
 
 ## Decisions
 
+- 2026-07-19 (M3a-live-verify): classifier returned MODE: MINIMAL for "okay, it's saved" (correct in isolation — reads as a simple acknowledgment). Escalated to ALGORITHM/E2 via the context-override rule since the conversation makes clear this is the trigger for the previously-promised deferred live-verification task, not a standalone acknowledgment. Result confirmed the escalation was correct — this closed 7 real ISCs with real API evidence, not a 2-word reply.
 - 2026-07-19 (M3c, silent-failure-hunter finding — fixed): Q3 asked whether the new non-attestation callout's claim ("does not by itself mean human attestation is required") was itself an unsupported overclaim. It was: `Judgment.gaps` has no reason-code taxonomy, so the code cannot affirmatively rule out human involvement any more than it could affirmatively require it — and SA-10's own fixture `note` ("requires human attestation via a linked artifact") shows this codebase already treats "artifact" and "attestation" as adjacent, not disjoint, concepts. Fixed: narrowed the claim to what the code actually knows — "this pattern does not automatically require human sign-off [the way attestation-pattern controls do]," not a categorical denial. Other 3 findings (Q1: README stale — addressed by ISC-264 below; Q2: no signature-change breakage — confirmed clean, no fix needed; Q4: ISC-243 invariant holds, verified via direct code read not just trust — confirmed clean, no fix needed).
 - 2026-07-19 (M3c, code-reviewer findings — both fixed): (1) `renderGaps`'s heading unconditionally read "#### Gaps / Requires Human Attestation" regardless of pattern or status — for the diff's own motivating case (a non-attestation insufficient-evidence control with gaps), this produced a direct in-section contradiction against the new callout's "does not require human attestation" text, and my own ISC-257 regression test missed it because its assertion checked lowercase "human" while the heading used "Human" (case mismatch let a real bug pass a green test). Fixed at the root: `renderGaps` no longer claims attestation at all — that claim belongs solely to `renderAttestationCallout` now, which is the one place status/pattern-aware attestation language should live. Updated the 2 existing tests that asserted the old heading text, and tightened ISC-257's assertion to a case-insensitive, heading-inclusive check so this exact class of bug (case-sensitive string match masking a real duplicate) can't recur silently. (2) The callout's own "see the gaps below" was directionally wrong (gaps render *above* the callout in block order) and could reference a gaps section that doesn't exist at all, since `judgment-validator.ts` doesn't require non-empty `gaps` for `insufficient-evidence`. Fixed: reworded to "if one is listed above" — accurate direction, no presupposition that gaps exist. Full suite re-verified green after both fixes: 81 pass, 210 expect(). Naming-trap note (not fixed, documented): `isCodeDetermined` returns true only for `attestation` even though `deterministic` sounds code-determined too — correct today (only `attestation` bypasses the LLM), but a latent trap for whoever eventually builds the deterministic-pattern bypass; flagged for that future slice's author to rename or re-derive rather than assume.
 - 2026-07-19 (M3c, pre-existing test correction — expected, not a regression): the M2c-era test "renders both confidence values on two distinct lines for every control" asserted the literal string `"**Confidence (model self-reported):**"` for all 5 sample controls including SA-10. This is exactly the universal labeling M3c intentionally changes — SA-10's confidence is now correctly labeled "code-determined, attestation pattern." Fixed the test to check the pattern-aware label per control (SA-10 gets its own assertion), not weakened or deleted. Full suite confirmed still green after the fix (81 pass, 209 expect(), up from 77/200 M3b baseline). Grepped for any other pre-existing assertion of the literal "model self-reported" string against SA-10 specifically — none found; this was the only stale one.
@@ -654,6 +655,7 @@ Deliver a working TypeScript project at `~/Desktop/GitHub/mlassure/` with a pass
 
 ## Verification
 
+- ISC-206–211, ISC-214 (M3a live verification, closed 2026-07-19): `TODO-m3a-live-verify` closed. Two real `bun run dev -- assess --live` runs against `model-clean.json` and `model-stale.json`, real Anthropic API, no fixtures/mocks. Clean: 8 rows, all `satisfied` except `SA-10` (`insufficient-evidence`, `code-determined:high`, 0 evidence, LLM never called — M3b bypass confirmed live). Stale: 8 rows — `SC-7` `not-satisfied` (no VPC/isolation), `RA-3` `insufficient-evidence` (`conf:low self-reported:high`, 0 evidence, gap text: "No model card was returned by the collector... Without this artifact, RA-3 cannot be assessed" — the LLM reasoning its way to insufficient-evidence live, exactly as designed, correctly labeled `self-reported` not `code-determined` by the M3c fix), `CA-7` `not-satisfied` (the one present DataQuality monitor `Failed`), `SA-10` unchanged from clean. README's demo-output blocks (ISC-214) updated with this real captured output (not fabricated), Implementation Ledger and Status table updated to remove the DEFERRED-VERIFY status.
 - ISC-238–255 (M3c): `Read`/`Grep` confirmed the named predicates, `ControlResult.pattern` field and its single population site, and the pattern-aware branches in all 3 output files; `bun run typecheck` → exit 0 after every fixture migration.
 - ISC-256–261 (M3c): `bun test` → `81 pass, 2 skip, 0 fail, 210 expect() calls. Ran 83 tests across 8 files.` — exceeds the 77-pass/200-expect() M3b baseline. Includes the correction of a pre-existing M2c test (expected, documented in Decisions, not a regression) and the two delegation-review-driven fixes (renderGaps heading, callout wording) with their own updated/tightened assertions.
 - ISC-262–263 (M3c): code-reviewer and silent-failure-hunter agents both invoked and returned; combined they found 3 real issues (1 from silent-failure-hunter, 2 from code-reviewer) — all 3 fixed directly before this milestone closed, none deferred. Full findings and fixes recorded in Decisions.
