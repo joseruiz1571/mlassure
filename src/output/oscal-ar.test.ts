@@ -232,6 +232,43 @@ describe("toOscalAssessmentResults — findings", () => {
     // this one is code-determined, not the model's self-report.
     expect(sa10.props!.find((p) => p.name === "confidence")!.value).toBe("high");
   });
+
+  it("ISC-291: carries the pattern prop correctly for a deterministic-pattern finding too (M3d)", () => {
+    const report: AssessmentReport = {
+      targetName: "fraud-detector-v2",
+      endpointName: "fraud-detector-v2-endpoint",
+      controlSetVersion: "nist-subset-1.0",
+      runAt: "2026-06-24T06:00:00.000Z",
+      results: [
+        {
+          controlId: "SC-28",
+          pattern: "deterministic",
+          judgment: {
+            controlId: "SC-28",
+            status: "satisfied",
+            confidence: "high",
+            rationale: "KMS key manager is CUSTOMER.",
+            evidenceCited: ["ev-kms"],
+            gaps: [],
+          },
+          evidenceCount: 1,
+          iterations: 0,
+          citedEvidence: [
+            { id: "ev-kms", source: "aws:kms:describe-key", sha256: "e".repeat(64), retrievedAt: "2026-06-24T05:56:00.000Z" },
+          ],
+          evidenceCoverage: 1,
+          collectorsTagged: 1,
+          collectorsCalled: 1,
+          collectorsCited: 1,
+          coverageConfidence: "high",
+        },
+      ],
+    };
+    const result = toOscalAssessmentResults(report)["assessment-results"].results[0]!;
+    const sc28 = result.findings!.find((f) => f.target["target-id"] === "SC-28")!;
+    expect(sc28.props!.find((p) => p.name === "pattern")!.value).toBe("deterministic");
+    expect(sc28.props!.find((p) => p.name === "confidence")!.value).toBe("high");
+  });
 });
 
 describe("toOscalAssessmentResults — observations and provenance", () => {

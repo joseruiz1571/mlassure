@@ -131,10 +131,12 @@ function renderControlSection(result: ControlResult): string {
     // Two lines, always both — confidence-as-coverage (M2c) is now the deterministic,
     // authoritative value, but the model's self-report is never silently dropped:
     // it's the signal a future essay can use to measure self-report/coverage divergence.
-    // M3c: the second line's label is pattern-aware — for attestation-pattern controls
-    // the confidence value is a code literal (agent.ts's bypass), never touched by an
-    // LLM, so calling it "model self-reported" would be false, not just imprecise.
-    `**Confidence (evidence coverage):** ${result.coverageConfidence}\n**Confidence (${isCodeDetermined(result.pattern) ? "code-determined, attestation pattern" : "model self-reported"}):** ${j.confidence}`,
+    // M3c/M3d: the second line's label is pattern-aware — for code-determined
+    // patterns (attestation, deterministic) the confidence value is a code
+    // literal, never touched by an LLM, so calling it "model self-reported"
+    // would be false, not just imprecise. Names the actual pattern rather than
+    // hardcoding one, since M3d added a second code-determined pattern.
+    `**Confidence (evidence coverage):** ${result.coverageConfidence}\n**Confidence (${isCodeDetermined(result.pattern) ? `code-determined (${result.pattern} pattern)` : "model self-reported"}):** ${j.confidence}`,
     rationale,
     `### Evidence\n\n${renderEvidence(result)}`,
     renderGaps(j),

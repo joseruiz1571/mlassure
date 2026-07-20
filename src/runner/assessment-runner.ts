@@ -1,7 +1,8 @@
 import type { ControlSet, AssessmentTarget, Judgment, AgentPattern } from "../types.js";
 import type { AwsProvider } from "../providers/aws-provider.interface.js";
 import type { LlmProvider } from "../llm/llm-provider.interface.js";
-import { assessControl } from "../agent/agent.js";
+import { assessControl, MissingDeterministicChecksError } from "../agent/agent.js";
+import { DETERMINISTIC_CHECKS } from "../agent/deterministic-checks.js";
 
 /** A cited evidence item retained for downstream output (OSCAL, narrative). */
 export type CitedEvidence = {
@@ -94,6 +95,18 @@ export async function runAssessment(
   provider: AwsProvider,
   llm: LlmProvider
 ): Promise<AssessmentReport> {
+  // Preflight (M3d, advisor-mandated): abort the WHOLE run before any control
+  // is assessed if any deterministic-pattern control is missing its registered
+  // check — not lazily inside assessControl(), where a gap would only surface
+  // after earlier controls already burned real LLM calls. Lists every missing
+  // ID at once, not just the first, so one run reveals the full gap.
+  const missingChecks = controlSet.controls
+    .filter((c) => c.pattern === "deterministic" && !DETERMINISTIC_CHECKS[c.id])
+    .map((c) => c.id);
+  if (missingChecks.length > 0) {
+    throw new MissingDeterministicChecksError(missingChecks);
+  }
+
   const results: ControlResult[] = [];
 
   for (const control of controlSet.controls) {

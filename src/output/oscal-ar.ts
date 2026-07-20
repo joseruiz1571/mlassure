@@ -75,10 +75,11 @@ function buildFinding(
   const j = result.judgment;
   const props: OscalProp[] = [
     { name: "judgment-status", value: j.status, ns: MLASSURE_NS },
-    // "confidence" is the model's self-report for every pattern EXCEPT
-    // `attestation`, whose judgment is code-generated (agent.ts's LLM bypass,
-    // M3b) — the "pattern" prop below lets a machine consumer derive that
-    // exception rather than trusting this field's provenance blindly.
+    // "confidence" is the model's self-report for every pattern EXCEPT the
+    // code-determined ones (`attestation` M3b, `deterministic` M3d — see
+    // `isCodeDetermined` in types.ts), whose judgment is code-generated —
+    // the "pattern" prop below lets a machine consumer derive that exception
+    // rather than trusting this field's provenance blindly.
     // coverage-confidence is the deterministic value (M2c) — additive, never a replacement.
     { name: "confidence", value: j.confidence, ns: MLASSURE_NS },
     { name: "pattern", value: result.pattern, ns: MLASSURE_NS },

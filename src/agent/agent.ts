@@ -7,6 +7,7 @@ import { executeCollector, isKnownCollector } from "../tools/executor.js";
 import { buildSystemPrompt, buildInitialMessage } from "./prompts.js";
 import { validateCitations } from "../guard/citation-guard.js";
 import { parseJudgment } from "../guard/judgment-validator.js";
+import { DETERMINISTIC_CHECKS } from "./deterministic-checks.js";
 
 const MAX_ITERATIONS = 10;
 
@@ -19,6 +20,46 @@ export type AssessControlResult = {
   /** Collector names whose evidence appears in the final judgment's evidenceCited. */
   citedCollectors: Set<string>;
 };
+
+/**
+ * Thrown when a `deterministic`-pattern control has no registered check
+ * function. This should be UNREACHABLE in practice — `runAssessment()`'s
+ * preflight (`assessment-runner.ts`) walks the whole control set and aborts
+ * before any control runs if any deterministic control is missing a check.
+ * This throw is a defensive invariant, not a recoverable per-control error:
+ * it must never be caught and turned into a judgment/coverage-math result,
+ * because a silent LLM fallback here would produce a report claiming
+ * code-determination while actually LLM-judged — the exact evidence-integrity
+ * defect this project exists to prevent (M3d advisor decision).
+ */
+export class MissingDeterministicCheckError extends Error {
+  constructor(controlId: string) {
+    super(
+      `No deterministic check registered for control "${controlId}" — see DETERMINISTIC_CHECKS in deterministic-checks.ts. This should have been caught by the preflight in runAssessment().`
+    );
+    this.name = "MissingDeterministicCheckError";
+  }
+}
+
+/**
+ * Thrown by `runAssessment()`'s preflight (`assessment-runner.ts`) — the
+ * reachable-in-practice sibling of `MissingDeterministicCheckError` above.
+ * A caller wanting to `instanceof`-branch on "missing deterministic check"
+ * should catch THIS type; `MissingDeterministicCheckError` is the defensive,
+ * should-be-unreachable in-function guard. Named and exported so both are
+ * equally catchable, not just the theoretically-dead one (code-reviewer
+ * finding, M3d).
+ */
+export class MissingDeterministicChecksError extends Error {
+  constructor(public readonly controlIds: readonly string[]) {
+    super(
+      `Missing deterministic check(s) for: ${controlIds.join(", ")}. ` +
+        `See DETERMINISTIC_CHECKS in src/agent/deterministic-checks.ts. ` +
+        `Aborting before any control is assessed.`
+    );
+    this.name = "MissingDeterministicChecksError";
+  }
+}
 
 export async function assessControl(
   control: ControlItem,
@@ -50,6 +91,17 @@ export async function assessControl(
       calledCollectors: new Set(),
       citedCollectors: new Set(),
     };
+  }
+
+  // Deterministic: a code-level check, keyed by control ID (not pattern) since
+  // each deterministic control's rule is genuinely different code. Fail-loud,
+  // never a silent LLM fallback — see MissingDeterministicCheckError.
+  if (control.pattern === "deterministic") {
+    const check = DETERMINISTIC_CHECKS[control.id];
+    if (!check) {
+      throw new MissingDeterministicCheckError(control.id);
+    }
+    return check(control, target, provider);
   }
 
   const store = new EvidenceStore();

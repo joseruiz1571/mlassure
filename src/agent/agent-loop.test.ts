@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { assessControl } from "./agent.js";
+import { parseJudgment } from "../guard/judgment-validator.js";
 import type { LlmProvider, LlmCompletionParams, LlmCompletionResult } from "../llm/llm-provider.interface.js";
 import type { AwsProvider } from "../providers/aws-provider.interface.js";
 import type { ControlItem, AssessmentTarget, RawEvidence } from "../types.js";
@@ -320,5 +321,176 @@ describe("agent loop — attestation pattern bypasses the LLM loop (M3b)", () =>
     expect(providerCalls()).toBe(0);
     expect(result.judgment.status).toBe("insufficient-evidence");
     expect(result.calledCollectors.size).toBe(0);
+  });
+});
+
+describe("agent loop — deterministic pattern bypasses the LLM loop (M3d)", () => {
+  const SC28_CONTROL: ControlItem = {
+    id: "SC-28",
+    framework: "SP 800-53",
+    pattern: "deterministic",
+    intent: "Encrypted at rest with customer-managed keys.",
+    collectors: ["getKMSConfig"],
+  };
+  const SC7_CONTROL: ControlItem = {
+    id: "SC-7",
+    framework: "SP 800-53",
+    pattern: "deterministic",
+    intent: "Network isolation with VPC and security group.",
+    collectors: ["getEndpointNetworkConfig"],
+  };
+
+  function makeCountingLlmForDeterministic(): { llm: LlmProvider; callCount: () => number } {
+    let calls = 0;
+    return {
+      llm: {
+        async complete(): Promise<LlmCompletionResult> {
+          calls++;
+          throw new Error("mockLlm.complete should never be called for a deterministic-pattern control");
+        },
+      },
+      callCount: () => calls,
+    };
+  }
+
+  it("ISC-285: SC-28 (customer-managed key) resolves satisfied with zero LLM calls, real cited evidence", async () => {
+    const { llm, callCount } = makeCountingLlmForDeterministic();
+    const provider = makeProvider({
+      getKMSConfig: async () => mockRaw("kms", { keyManager: "CUSTOMER", volumeKmsKeyId: "arn:...", artifactKmsKeyId: "arn:..." }),
+    });
+
+    const result = await assessControl(SC28_CONTROL, MOCK_TARGET, provider, llm);
+
+    expect(callCount()).toBe(0);
+    expect(result.judgment.status).toBe("satisfied");
+    expect(result.judgment.confidence).toBe("high");
+    expect(result.judgment.evidenceCited).toHaveLength(1);
+    expect(result.iterations).toBe(0);
+  });
+
+  it("ISC-285: SC-28 (AWS-managed key) resolves not-satisfied, still zero LLM calls", async () => {
+    const { llm, callCount } = makeCountingLlmForDeterministic();
+    const provider = makeProvider({
+      getKMSConfig: async () => mockRaw("kms", { keyManager: "AWS", volumeKmsKeyId: null, artifactKmsKeyId: "arn:aws:kms:...key/aws/sagemaker" }),
+    });
+
+    const result = await assessControl(SC28_CONTROL, MOCK_TARGET, provider, llm);
+
+    expect(callCount()).toBe(0);
+    expect(result.judgment.status).toBe("not-satisfied");
+    expect(result.judgment.gaps.length).toBeGreaterThan(0);
+  });
+
+  it("ISC-269: SC-28 with a null KMS collector return resolves insufficient-evidence, not a false satisfied/not-satisfied", async () => {
+    const { llm, callCount } = makeCountingLlmForDeterministic();
+    const provider = makeProvider({ getKMSConfig: async () => null });
+
+    const result = await assessControl(SC28_CONTROL, MOCK_TARGET, provider, llm);
+
+    expect(callCount()).toBe(0);
+    expect(result.judgment.status).toBe("insufficient-evidence");
+    expect(result.judgment.evidenceCited).toHaveLength(0);
+  });
+
+  it("ISC-286: SC-7 (isolated, VPC, security group) resolves satisfied with zero LLM calls", async () => {
+    const { llm, callCount } = makeCountingLlmForDeterministic();
+    const provider = makeProvider({
+      getEndpointNetworkConfig: async () =>
+        mockRaw("network", { enableNetworkIsolation: true, vpcId: "vpc-1", securityGroupIds: ["sg-1"] }),
+    });
+
+    const result = await assessControl(SC7_CONTROL, MOCK_TARGET, provider, llm);
+
+    expect(callCount()).toBe(0);
+    expect(result.judgment.status).toBe("satisfied");
+  });
+
+  it("ISC-286: SC-7 (no isolation, no VPC, no security group) resolves not-satisfied, names all 3 missing conditions", async () => {
+    const { llm, callCount } = makeCountingLlmForDeterministic();
+    const provider = makeProvider({
+      getEndpointNetworkConfig: async () =>
+        mockRaw("network", { enableNetworkIsolation: false, vpcId: null, securityGroupIds: [] }),
+    });
+
+    const result = await assessControl(SC7_CONTROL, MOCK_TARGET, provider, llm);
+
+    expect(callCount()).toBe(0);
+    expect(result.judgment.status).toBe("not-satisfied");
+    expect(result.judgment.gaps).toHaveLength(3);
+  });
+
+  it("ISC-272: SC-7 with a null network collector return resolves insufficient-evidence", async () => {
+    const { llm, callCount } = makeCountingLlmForDeterministic();
+    const provider = makeProvider({ getEndpointNetworkConfig: async () => null });
+
+    const result = await assessControl(SC7_CONTROL, MOCK_TARGET, provider, llm);
+
+    expect(callCount()).toBe(0);
+    expect(result.judgment.status).toBe("insufficient-evidence");
+  });
+
+  it("ISC-277: a deterministic-pattern control with no registered check throws MissingDeterministicCheckError, never falls back to the LLM", async () => {
+    const { llm, callCount } = makeCountingLlmForDeterministic();
+    const unregistered: ControlItem = {
+      id: "SC-99-NOT-REGISTERED",
+      framework: "SP 800-53",
+      pattern: "deterministic",
+      intent: "No check exists for this control.",
+      collectors: [],
+    };
+
+    await expect(assessControl(unregistered, MOCK_TARGET, makeProvider(), llm)).rejects.toThrow(
+      "No deterministic check registered for control"
+    );
+    expect(callCount()).toBe(0);
+  });
+
+  it("ISC-289: a deterministic-check judgment passes parseJudgment/validateCitations identically to an LLM-produced one", async () => {
+    const provider = makeProvider({
+      getKMSConfig: async () => mockRaw("kms", { keyManager: "CUSTOMER" }),
+    });
+    const { llm } = makeCountingLlmForDeterministic();
+    const result = await assessControl(SC28_CONTROL, MOCK_TARGET, provider, llm);
+
+    // Re-parse through the exact same validator the LLM path uses — proves the
+    // bypass judgment satisfies the identical shape contract, not a looser one.
+    const reparsed = parseJudgment(result.judgment, SC28_CONTROL.id);
+    expect(reparsed).toEqual(result.judgment);
+  });
+
+  it("silent-failure-hunter finding: a malformed KMS payload (wrong field type) resolves insufficient-evidence, never a false not-satisfied", async () => {
+    const { llm, callCount } = makeCountingLlmForDeterministic();
+    // keyManager is a number, not a string — a malformed/unexpected shape a real (non-fixture) provider could produce.
+    const provider = makeProvider({ getKMSConfig: async () => mockRaw("kms", { keyManager: 42 }) });
+
+    const result = await assessControl(SC28_CONTROL, MOCK_TARGET, provider, llm);
+
+    expect(callCount()).toBe(0);
+    expect(result.judgment.status).toBe("insufficient-evidence");
+    expect(result.judgment.rationale).not.toContain("undefined");
+  });
+
+  it("silent-failure-hunter finding: a malformed network payload (missing enableNetworkIsolation) resolves insufficient-evidence, never a false not-satisfied", async () => {
+    const { llm, callCount } = makeCountingLlmForDeterministic();
+    const provider = makeProvider({
+      getEndpointNetworkConfig: async () => mockRaw("network", { vpcId: "vpc-1", securityGroupIds: ["sg-1"] }),
+    });
+
+    const result = await assessControl(SC7_CONTROL, MOCK_TARGET, provider, llm);
+
+    expect(callCount()).toBe(0);
+    expect(result.judgment.status).toBe("insufficient-evidence");
+  });
+
+  it("silent-failure-hunter finding (behavior asymmetry, pinned not just documented): a collector THROW propagates uncaught, does not silently become a judgment", async () => {
+    const { llm, callCount } = makeCountingLlmForDeterministic();
+    const provider = makeProvider({
+      getKMSConfig: async () => {
+        throw new Error("AWS SDK not configured");
+      },
+    });
+
+    await expect(assessControl(SC28_CONTROL, MOCK_TARGET, provider, llm)).rejects.toThrow("AWS SDK not configured");
+    expect(callCount()).toBe(0);
   });
 });

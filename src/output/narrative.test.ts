@@ -194,8 +194,15 @@ describe("toNarrativeMarkdown — confidence provenance label (M3c)", () => {
   it("ISC-258: code-determined label for attestation-pattern controls", () => {
     const md = toNarrativeMarkdown(sampleReport());
     const sa10Section = md.split("## SA-10")[1]!.split("## SC-7")[0]!;
-    expect(sa10Section).toContain("**Confidence (code-determined, attestation pattern):** low");
+    expect(sa10Section).toContain("**Confidence (code-determined (attestation pattern)):** low");
     expect(sa10Section).not.toContain("model self-reported");
+  });
+
+  it("M3d: code-determined label also applies to deterministic-pattern controls", () => {
+    const md = toNarrativeMarkdown(sampleReport());
+    const sc7Section = md.split("## SC-7")[1]!.split("## AC-2")[0]!;
+    expect(sc7Section).toContain("**Confidence (code-determined (deterministic pattern)):** high");
+    expect(sc7Section).not.toContain("model self-reported");
   });
 });
 
@@ -349,17 +356,21 @@ describe("toNarrativeMarkdown — hardening against malformed judgment data", ()
 });
 
 describe("toNarrativeMarkdown — confidence-as-coverage (M2c)", () => {
-  it("renders both confidence values on two distinct lines for every control (label is pattern-aware as of M3c)", () => {
+  it("renders both confidence values on two distinct lines for every control (label is pattern-aware as of M3c/M3d)", () => {
     const md = toNarrativeMarkdown(sampleReport());
-    for (const id of ["SI-6(1)", "AU-12(3)", "SC-7", "AC-2"]) {
+    for (const id of ["SI-6(1)", "AU-12(3)", "AC-2"]) {
       const section = md.split(`## ${id}`)[1]!.split(/\n## /)[0]!;
       expect(section).toContain("**Confidence (evidence coverage):**");
       expect(section).toContain("**Confidence (model self-reported):**");
     }
-    // SA-10 is attestation-pattern — its second line is labeled code-determined, not model self-reported.
+    // SA-10 (attestation) and SC-7 (deterministic) are both code-determined patterns (M3d) —
+    // their second line is labeled code-determined, not model self-reported.
     const sa10Section = md.split("## SA-10")[1]!.split(/\n## /)[0]!;
     expect(sa10Section).toContain("**Confidence (evidence coverage):**");
-    expect(sa10Section).toContain("**Confidence (code-determined, attestation pattern):**");
+    expect(sa10Section).toContain("**Confidence (code-determined (attestation pattern)):**");
+    const sc7Section = md.split("## SC-7")[1]!.split(/\n## /)[0]!;
+    expect(sc7Section).toContain("**Confidence (evidence coverage):**");
+    expect(sc7Section).toContain("**Confidence (code-determined (deterministic pattern)):**");
   });
 
   it("never omits the self-reported line even when it matches the coverage value exactly", () => {

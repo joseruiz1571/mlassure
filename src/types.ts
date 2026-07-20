@@ -14,19 +14,27 @@ export const AGENT_PATTERNS: readonly AgentPattern[] = [
 ];
 
 /**
- * Two distinct questions that happen to coincide today (only `attestation`
- * bypasses the LLM loop) but must not be conflated: which pattern authored
- * the judgment's confidence value (code vs. model), and which pattern's
- * insufficient-evidence verdict genuinely means "a human must sign off" vs.
- * "the model couldn't gather enough evidence." Kept as separate named
- * functions, not one shared boolean, so the day `AgentPattern` gains a
- * member that decouples them there is exactly one place each to edit —
- * not a grep across every call site for the right string literal.
+ * Two distinct questions that decoupled exactly as anticipated the moment a
+ * second pattern (`deterministic`, M3d) gained a code-level bypass: which
+ * patterns authored the judgment's confidence value (code vs. model), and
+ * which pattern's insufficient-evidence verdict genuinely means "a human
+ * must sign off" vs. "the model/code couldn't gather enough evidence."
+ * `isCodeDetermined` is a pure derived function over `pattern` — never a
+ * stored/cached flag — so it's structurally impossible for a result to
+ * diverge from what actually produced it: both `attestation` (M3b) and
+ * `deterministic` (M3d) are fail-loud-guaranteed to always be code-run,
+ * never silently falling back to the LLM.
  */
 export function isCodeDetermined(pattern: AgentPattern): boolean {
-  return pattern === "attestation";
+  return pattern === "attestation" || pattern === "deterministic";
 }
 
+/**
+ * Unlike `isCodeDetermined`, this stays `attestation`-only: a `deterministic`
+ * control's `not-satisfied`/`satisfied` verdict never needs a human-attestation
+ * callout, and even its defensive `insufficient-evidence` path (null-collector
+ * case) means "no evidence retrievable," not "a human must sign off."
+ */
 export function usesAttestationCallout(pattern: AgentPattern): boolean {
   return pattern === "attestation";
 }

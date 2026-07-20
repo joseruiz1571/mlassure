@@ -50,30 +50,30 @@ bun run dev -- assess \
 `fraud-detection-v2` — clean monitoring setup, all 8 controls:
 
 ```
-  ✓ SI-6(1)      satisfied              conf:high    self-reported:high    evidence:5
-  ✓ AC-6(9)      satisfied              conf:high    self-reported:high    evidence:1
-  ✓ AU-12(3)     satisfied              conf:high    self-reported:high    evidence:3
-  ✓ SC-28        satisfied              conf:high    self-reported:high    evidence:1
-  ? SA-10        insufficient-evidence  conf:high    code-determined:high    evidence:0
-  ✓ SC-7         satisfied              conf:high    self-reported:high    evidence:1
-  ✓ RA-3         satisfied              conf:high    self-reported:high    evidence:1
-  ✓ CA-7         satisfied              conf:high    self-reported:high    evidence:3
+  ✓ SI-6(1)      satisfied              conf:high    self-reported:high     evidence:5
+  ✓ AC-6(9)      satisfied              conf:high    self-reported:high     evidence:1
+  ✓ AU-12(3)     satisfied              conf:high    self-reported:high     evidence:3
+  ✓ SC-28        satisfied              conf:high    code-determined:high   evidence:1
+  ? SA-10        insufficient-evidence  conf:high    code-determined:high   evidence:0
+  ✓ SC-7         satisfied              conf:high    code-determined:high   evidence:1
+  ✓ RA-3         satisfied              conf:high    self-reported:high     evidence:1
+  ✓ CA-7         satisfied              conf:high    self-reported:high     evidence:3
 ```
 
 `churn-predictor-v1` — data capture disabled, no ModelQuality monitor, overly broad IAM, no model card, no VPC isolation:
 
 ```
-  ✗ SI-6(1)      not-satisfied          conf:high    self-reported:high    evidence:3
-  ✗ AC-6(9)      not-satisfied          conf:high    self-reported:high    evidence:1
-  ~ AU-12(3)     partially-satisfied    conf:high    self-reported:high    evidence:3
-  ✗ SC-28        not-satisfied          conf:high    self-reported:high    evidence:1
-  ? SA-10        insufficient-evidence  conf:high    code-determined:high    evidence:0
-  ✗ SC-7         not-satisfied          conf:high    self-reported:high    evidence:1
-  ? RA-3         insufficient-evidence  conf:low     self-reported:high    evidence:0
-  ✗ CA-7         not-satisfied          conf:high    self-reported:high    evidence:1
+  ✗ SI-6(1)      not-satisfied          conf:high    self-reported:high     evidence:3
+  ✗ AC-6(9)      not-satisfied          conf:high    self-reported:high     evidence:1
+  ~ AU-12(3)     partially-satisfied    conf:high    self-reported:high     evidence:3
+  ✗ SC-28        not-satisfied          conf:high    code-determined:high   evidence:1
+  ? SA-10        insufficient-evidence  conf:high    code-determined:high   evidence:0
+  ✗ SC-7         not-satisfied          conf:high    code-determined:high   evidence:1
+  ? RA-3         insufficient-evidence  conf:low     self-reported:high     evidence:0
+  ✗ CA-7         not-satisfied          conf:high    self-reported:high     evidence:1
 ```
 
-SA-10 (`attestation` pattern) is deliberately `insufficient-evidence` on both, `code-determined` — no LLM call was made; machine-readable evidence cannot substitute for a named reviewer's sign-off, and the codebase now guarantees this at the code level (M3b). RA-3 (`synthesis` pattern) shows the *other* insufficient-evidence shape: `satisfied` on the clean target (a real model card exists to synthesize), `insufficient-evidence` on the stale one (no model card was retrievable — `self-reported`, an LLM reasoned its way there from a genuinely empty tool result, not a static rule). Two different mechanisms, two different labels, both honest about what they actually know.
+Three different confidence-provenance mechanisms now visible in one report: **SC-28/SC-7** (`deterministic` pattern) are `code-determined` by a real TypeScript check function, zero LLM calls, identical verdicts before and after the bypass (M3d, live-verified). **SA-10** (`attestation` pattern) is deliberately `insufficient-evidence` on both, also `code-determined` — no LLM call was made; machine-readable evidence cannot substitute for a named reviewer's sign-off, and the codebase guarantees this at the code level (M3b). **RA-3** (`synthesis` pattern) shows the *LLM-reasoned* insufficient-evidence shape: `satisfied` on the clean target (a real model card exists to synthesize), `insufficient-evidence` on the stale one (no model card was retrievable — `self-reported`, an LLM reasoned its way there from a genuinely empty tool result, not a static rule). Three mechanisms, three honest labels, none overclaiming what actually produced the verdict.
 
 ---
 
@@ -120,7 +120,6 @@ CLI (assess command)
 **Partial**
 
 - **Pattern differentiation in loop mechanics** — `synthesis`, `sufficiency`, and `correlation` currently differ only in how the control is framed to the model (`PATTERN_DESCRIPTIONS` in `src/agent/prompts.ts`); they share the same loop. Whether the categories warrant separate mechanics — or whether sufficiency and correlation collapse into synthesis — is an M3 design question.
-- **LLM bypass for `deterministic`** — still runs the LLM loop, producing correct outputs via single-field prompting rather than a code-level check. `attestation` bypass shipped in M3b (below); `deterministic` bypass requires designing a schema for expressing rules in code rather than prose — a larger, still-undecided design target. Note for that future slice's author: `isCodeDetermined` (`src/types.ts`) currently returns `true` only for `attestation` — a naming trap, since `deterministic` sounds code-determined too; re-derive rather than assume when that bypass lands (M3c code-reviewer finding).
 - **Custody chain and evidence retention** — mlassure hashes evidence at ingestion and preserves it for the full run; the pattern for signing and retaining artifacts under immutable storage (OIDC-signed, transparency-logged) is implemented in the separate [cgep-capstone](https://github.com/joseruiz1571/cgep-capstone) evidence layer and can be integrated in M3.
 - **Collection scope disclosure** — whether assessed outputs disclose the collectors' IAM scope and retrieval permissions is an M3 design decision.
 
@@ -134,7 +133,11 @@ CLI (assess command)
 
 **Implemented (M3c, 2026-07-19)**
 
-- **Output-layer pattern/provenance awareness** — `ControlResult` (`src/runner/assessment-runner.ts`) now carries the control's `pattern`, threaded into all 3 output surfaces via two named predicates (`isCodeDetermined`, `usesAttestationCallout` — `src/types.ts`). `narrative.ts`'s confidence-line label reads "code-determined, attestation pattern" instead of the previously-unconditional "model self-reported" for attestation-bypass judgments; its attestation callout now fires only for true attestation-pattern controls, with a distinct, narrower callout for any other pattern reaching `insufficient-evidence` that does not overclaim what the code can't support. `oscal-ar.ts` gains an additive `pattern` prop so machine consumers can derive the same distinction. `cli/index.ts`'s label follows suit. Closes the exact gap M3a's and M3b's delegation reviews both independently found. Two rounds of delegation review on this fix itself caught and closed two further real issues before shipping: a stale "Gaps / Requires Human Attestation" heading that contradicted the new callout, and an overclaiming callout text narrowed to what the data actually supports — see `ISA.md` Decisions for the full trail.
+- **Output-layer pattern/provenance awareness** — `ControlResult` (`src/runner/assessment-runner.ts`) now carries the control's `pattern`, threaded into all 3 output surfaces via two named predicates (`isCodeDetermined`, `usesAttestationCallout` — `src/types.ts`). `narrative.ts`'s confidence-line label reads "code-determined (\<pattern\> pattern)" instead of the previously-unconditional "model self-reported" for code-determined judgments; its attestation callout now fires only for true attestation-pattern controls, with a distinct, narrower callout for any other pattern reaching `insufficient-evidence` that does not overclaim what the code can't support. `oscal-ar.ts` gains an additive `pattern` prop so machine consumers can derive the same distinction. `cli/index.ts`'s label follows suit. Closes the exact gap M3a's and M3b's delegation reviews both independently found. Two rounds of delegation review on this fix itself caught and closed two further real issues before shipping: a stale "Gaps / Requires Human Attestation" heading that contradicted the new callout, and an overclaiming callout text narrowed to what the data actually supports — see `ISA.md` Decisions for the full trail.
+
+**Implemented (M3d, 2026-07-19)**
+
+- **LLM bypass for `deterministic`** — `assessControl()` now dispatches `pattern: deterministic` controls to a per-control-ID registry of real TypeScript check functions (`src/agent/deterministic-checks.ts`), not a rule DSL or eval'd expression — mirroring how collectors are already dispatched by name. `SC-28` (customer-managed KMS key check) and `SC-7` (network isolation + VPC + security group check) both ship real, live-verified implementations; both route through the same `EvidenceStore`/citation-guard discipline as the LLM path, so the citation invariant holds for code-determined judgments too. **Fail-loud by design, no silent fallback**: a `deterministic`-pattern control with no registered check aborts the entire run (`runAssessment()`'s preflight, listing every missing check at once) before any control — deterministic or not — is assessed, rather than silently falling back to the LLM and producing a report that misrepresents its own provenance. `isCodeDetermined` (`src/types.ts`) generalizes to cover both `attestation` and `deterministic` as a pure derived function over `pattern` — structurally incapable of diverging from what actually ran. Delegation review on this fix found and fixed 2 real gaps before shipping: deterministic-check judgments weren't running through the same `parseJudgment`/`validateCitations` guards the LLM path is forced through (now they do, via a shared `finalizeJudgment` helper), and unguarded type casts on evidence payloads could have silently turned a malformed/unexpected shape into a confidently-wrong `not-satisfied` verdict instead of an honest `insufficient-evidence` one (now type-guarded). Live-verified against both fixtures: identical verdicts to the prior LLM-driven run, now `code-determined` instead of `self-reported`, zero LLM calls.
 
 **Designed**
 
@@ -173,7 +176,8 @@ M3a added SC-7, RA-3, and CA-7 by reusing existing collectors and patterns — z
 | M3a: 5→8 controls, second insufficient-evidence mechanism | Shipped, live-verified (2026-07-19) |
 | M3b: attestation-pattern LLM bypass | Shipped, unit-verified (2026-07-19) |
 | M3c: output-layer pattern/provenance awareness | Shipped, unit-verified (2026-07-19) |
-| M3 (remaining): Docker, deterministic bypass, custody chain, tag provenance | Planned |
+| M3d: deterministic-pattern LLM bypass (SC-28, SC-7) | Shipped, live-verified (2026-07-19) |
+| M3 (remaining): Docker, custody chain, tag provenance | Planned |
 | M4: live AWS read-only provider | Planned |
 
 ---

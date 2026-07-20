@@ -388,3 +388,102 @@ describe("deriveCoverageConfidence — fail-loud on corrupted input (silent-fail
     expect(() => deriveCoverageConfidence(1.5, 2)).toThrow(/out of range/);
   });
 });
+
+describe("runAssessment — deterministic-check preflight (M3d, advisor-mandated fail-loud)", () => {
+  it("ISC-278/280: aborts the WHOLE run before any control is assessed when a deterministic control has no registered check — zero LLM calls, even for earlier controls in the same set", async () => {
+    let llmCalls = 0;
+    const throwingLlm: LlmProvider = {
+      async complete(): Promise<LlmCompletionResult> {
+        llmCalls++;
+        throw new Error("LLM should never be called — preflight must abort first");
+      },
+    };
+    const controlSet: ControlSet = {
+      version: "test-1.0",
+      controls: [
+        {
+          id: "SI-6(1)",
+          framework: "SP 800-53",
+          pattern: "synthesis",
+          intent: "A normal LLM-path control, listed FIRST to prove preflight runs before the loop reaches it.",
+          collectors: ["getDataCaptureConfig"],
+        },
+        {
+          id: "SC-99-NOT-REGISTERED",
+          framework: "SP 800-53",
+          pattern: "deterministic",
+          intent: "No check exists for this control.",
+          collectors: [],
+        },
+      ],
+    };
+
+    await expect(
+      runAssessment(controlSet, MOCK_TARGET, makeProvider(), throwingLlm)
+    ).rejects.toThrow("Missing deterministic check(s) for: SC-99-NOT-REGISTERED");
+    expect(llmCalls).toBe(0);
+  });
+
+  it("ISC-288: lists ALL missing deterministic checks in one aggregate error, not just the first", async () => {
+    const controlSet: ControlSet = {
+      version: "test-1.0",
+      controls: [
+        {
+          id: "SC-98-NOT-REGISTERED",
+          framework: "SP 800-53",
+          pattern: "deterministic",
+          intent: "First missing check.",
+          collectors: [],
+        },
+        {
+          id: "SC-99-NOT-REGISTERED",
+          framework: "SP 800-53",
+          pattern: "deterministic",
+          intent: "Second missing check.",
+          collectors: [],
+        },
+      ],
+    };
+    const neverLlm: LlmProvider = {
+      async complete(): Promise<LlmCompletionResult> {
+        throw new Error("should never be called");
+      },
+    };
+
+    try {
+      await runAssessment(controlSet, MOCK_TARGET, makeProvider(), neverLlm);
+      throw new Error("expected runAssessment to throw");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      expect(message).toContain("SC-98-NOT-REGISTERED");
+      expect(message).toContain("SC-99-NOT-REGISTERED");
+    }
+  });
+
+  it("a control set where every deterministic control HAS a registered check (SC-28, SC-7) runs normally, no abort", async () => {
+    const controlSet: ControlSet = {
+      version: "test-1.0",
+      controls: [
+        {
+          id: "SC-28",
+          framework: "SP 800-53",
+          pattern: "deterministic",
+          intent: "Encrypted at rest.",
+          collectors: ["getKMSConfig"],
+        },
+      ],
+    };
+    const provider = makeProvider({
+      getKMSConfig: async () => mockRaw("kms", { keyManager: "CUSTOMER" }),
+    });
+    const neverLlm: LlmProvider = {
+      async complete(): Promise<LlmCompletionResult> {
+        throw new Error("should never be called for a registered deterministic control");
+      },
+    };
+
+    const report = await runAssessment(controlSet, MOCK_TARGET, provider, neverLlm);
+    expect(report.results[0]!.judgment.status).toBe("satisfied");
+    expect(report.results[0]!.pattern).toBe("deterministic");
+  });
+});
