@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { toOscalAssessmentResults } from "./oscal-ar.js";
+import { toOscalAssessmentResults, toOscalControlId } from "./oscal-ar.js";
 import { OSCAL_VERSION, MLASSURE_NS } from "./oscal-types.js";
 import type { AssessmentReport } from "../runner/assessment-runner.js";
 
@@ -116,7 +116,7 @@ describe("toOscalAssessmentResults — findings", () => {
     const result = toOscalAssessmentResults(report)["assessment-results"].results[0]!;
     expect(result.findings).toHaveLength(report.results.length);
     const targetIds = result.findings!.map((f) => f.target["target-id"]).sort();
-    expect(targetIds).toEqual(["AU-12(3)", "SI-6(1)"]);
+    expect(targetIds).toEqual(["au-12.3", "si-6.1"]);
     for (const f of result.findings!) {
       expect(f.uuid).toMatch(UUID_RE);
     }
@@ -125,8 +125,8 @@ describe("toOscalAssessmentResults — findings", () => {
   it("maps status fail-closed: only 'satisfied' becomes OSCAL 'satisfied'", () => {
     const result = toOscalAssessmentResults(sampleReport())["assessment-results"]
       .results[0]!;
-    const si6 = result.findings!.find((f) => f.target["target-id"] === "SI-6(1)")!;
-    const au12 = result.findings!.find((f) => f.target["target-id"] === "AU-12(3)")!;
+    const si6 = result.findings!.find((f) => f.target["target-id"] === "si-6.1")!;
+    const au12 = result.findings!.find((f) => f.target["target-id"] === "au-12.3")!;
     expect(si6.target.status.state).toBe("satisfied");
     // partially-satisfied must NOT read as satisfied
     expect(au12.target.status.state).toBe("not-satisfied");
@@ -135,7 +135,7 @@ describe("toOscalAssessmentResults — findings", () => {
   it("preserves the raw 5-value judgment status in a prop and the reason", () => {
     const result = toOscalAssessmentResults(sampleReport())["assessment-results"]
       .results[0]!;
-    const au12 = result.findings!.find((f) => f.target["target-id"] === "AU-12(3)")!;
+    const au12 = result.findings!.find((f) => f.target["target-id"] === "au-12.3")!;
     const statusProp = au12.props!.find((p) => p.name === "judgment-status");
     expect(statusProp!.value).toBe("partially-satisfied");
     expect(statusProp!.ns).toBe(MLASSURE_NS);
@@ -147,7 +147,7 @@ describe("toOscalAssessmentResults — findings", () => {
     report.results[1]!.judgment.status = "not-applicable";
     report.results[1]!.judgment.gaps = [];
     const result = toOscalAssessmentResults(report)["assessment-results"].results[0]!;
-    const au12 = result.findings!.find((f) => f.target["target-id"] === "AU-12(3)")!;
+    const au12 = result.findings!.find((f) => f.target["target-id"] === "au-12.3")!;
     // N/A must never read as satisfied, and the raw status is preserved.
     expect(au12.target.status.state).toBe("not-satisfied");
     expect(au12.props!.find((p) => p.name === "judgment-status")!.value).toBe(
@@ -161,8 +161,8 @@ describe("toOscalAssessmentResults — findings", () => {
   it("a satisfied finding carries no remarks; a non-satisfied finding does", () => {
     const result = toOscalAssessmentResults(sampleReport())["assessment-results"]
       .results[0]!;
-    const si6 = result.findings!.find((f) => f.target["target-id"] === "SI-6(1)")!;
-    const au12 = result.findings!.find((f) => f.target["target-id"] === "AU-12(3)")!;
+    const si6 = result.findings!.find((f) => f.target["target-id"] === "si-6.1")!;
+    const au12 = result.findings!.find((f) => f.target["target-id"] === "au-12.3")!;
     expect(si6.remarks).toBeUndefined();
     expect(au12.remarks).toBeDefined();
   });
@@ -170,7 +170,7 @@ describe("toOscalAssessmentResults — findings", () => {
   it("carries confidence and gaps as findings props, and rationale as description", () => {
     const result = toOscalAssessmentResults(sampleReport())["assessment-results"]
       .results[0]!;
-    const au12 = result.findings!.find((f) => f.target["target-id"] === "AU-12(3)")!;
+    const au12 = result.findings!.find((f) => f.target["target-id"] === "au-12.3")!;
     expect(au12.props!.find((p) => p.name === "confidence")!.value).toBe("medium");
     expect(au12.props!.filter((p) => p.name === "gap").map((p) => p.value)).toEqual([
       "No retention policy on audit logs",
@@ -181,8 +181,8 @@ describe("toOscalAssessmentResults — findings", () => {
   it("carries evidence-coverage and coverage-confidence as additive props alongside the unchanged self-reported confidence (M2c)", () => {
     const result = toOscalAssessmentResults(sampleReport())["assessment-results"]
       .results[0]!;
-    const si6 = result.findings!.find((f) => f.target["target-id"] === "SI-6(1)")!;
-    const au12 = result.findings!.find((f) => f.target["target-id"] === "AU-12(3)")!;
+    const si6 = result.findings!.find((f) => f.target["target-id"] === "si-6.1")!;
+    const au12 = result.findings!.find((f) => f.target["target-id"] === "au-12.3")!;
     expect(si6.props!.find((p) => p.name === "confidence")!.value).toBe("high");
     expect(si6.props!.find((p) => p.name === "evidence-coverage")!.value).toBe("1");
     expect(si6.props!.find((p) => p.name === "coverage-confidence")!.value).toBe("high");
@@ -222,11 +222,11 @@ describe("toOscalAssessmentResults — findings", () => {
       ],
     };
     const result = toOscalAssessmentResults(sampleReport())["assessment-results"].results[0]!;
-    const si6 = result.findings!.find((f) => f.target["target-id"] === "SI-6(1)")!;
+    const si6 = result.findings!.find((f) => f.target["target-id"] === "si-6.1")!;
     expect(si6.props!.find((p) => p.name === "pattern")!.value).toBe("synthesis");
 
     const attestationResult = toOscalAssessmentResults(report)["assessment-results"].results[0]!;
-    const sa10 = attestationResult.findings!.find((f) => f.target["target-id"] === "SA-10")!;
+    const sa10 = attestationResult.findings!.find((f) => f.target["target-id"] === "sa-10")!;
     expect(sa10.props!.find((p) => p.name === "pattern")!.value).toBe("attestation");
     // "confidence" is still emitted, but a consumer must check "pattern" to know
     // this one is code-determined, not the model's self-report.
@@ -265,7 +265,7 @@ describe("toOscalAssessmentResults — findings", () => {
       ],
     };
     const result = toOscalAssessmentResults(report)["assessment-results"].results[0]!;
-    const sc28 = result.findings!.find((f) => f.target["target-id"] === "SC-28")!;
+    const sc28 = result.findings!.find((f) => f.target["target-id"] === "sc-28")!;
     expect(sc28.props!.find((p) => p.name === "pattern")!.value).toBe("deterministic");
     expect(sc28.props!.find((p) => p.name === "confidence")!.value).toBe("high");
   });
@@ -316,7 +316,7 @@ describe("toOscalAssessmentResults — observations and provenance", () => {
       }
     }
     // SI-6(1) cited two evidence items → two related observations
-    const si6 = result.findings!.find((f) => f.target["target-id"] === "SI-6(1)")!;
+    const si6 = result.findings!.find((f) => f.target["target-id"] === "si-6.1")!;
     expect(si6["related-observations"]).toHaveLength(2);
   });
 
@@ -327,7 +327,7 @@ describe("toOscalAssessmentResults — observations and provenance", () => {
     report.results[1]!.judgment.evidenceCited = [];
     const result = toOscalAssessmentResults(report)["assessment-results"].results[0]!;
     expect(result.observations).toHaveLength(2); // only SI-6(1)'s two remain
-    const au12 = result.findings!.find((f) => f.target["target-id"] === "AU-12(3)")!;
+    const au12 = result.findings!.find((f) => f.target["target-id"] === "au-12.3")!;
     expect(au12["related-observations"] ?? []).toHaveLength(0);
   });
 
@@ -357,7 +357,7 @@ describe("toOscalAssessmentResults — tag provenance props (M3f)", () => {
       },
     ];
     const result = toOscalAssessmentResults(report)["assessment-results"].results[0]!;
-    const si6 = result.findings!.find((f) => f.target["target-id"] === "SI-6(1)")!;
+    const si6 = result.findings!.find((f) => f.target["target-id"] === "si-6.1")!;
     expect(si6.props!.find((p) => p.name === "pattern-assigned")!.value).toBe(
       "2026-03-01"
     );
@@ -387,7 +387,7 @@ describe("toOscalAssessmentResults — tag provenance props (M3f)", () => {
       { pattern: "synthesis", assigned: "2026-06-10", rationale: "origin" },
     ];
     const result = toOscalAssessmentResults(report)["assessment-results"].results[0]!;
-    const si6 = result.findings!.find((f) => f.target["target-id"] === "SI-6(1)")!;
+    const si6 = result.findings!.find((f) => f.target["target-id"] === "si-6.1")!;
     expect(si6.props!.find((p) => p.name === "pattern-assigned")!.value).toBe(
       "2026-06-10"
     );
@@ -414,5 +414,38 @@ describe("toOscalAssessmentResults — tag provenance props (M3f)", () => {
     expect(() => toOscalAssessmentResults(report)).toThrow(
       /has no "supersedes" — structurally invalid history/
     );
+  });
+});
+
+/**
+ * Spec-authored mapping assertions (advisor, ISC-104 closure): the expected
+ * values below were hand-derived from the NIST SP 800-53 rev5 OSCAL catalog
+ * id convention (lowercase, dotted numeric enhancement) — NOT copied from
+ * program output. Editing tests to match new output is how regressions get
+ * masked; this block encodes the intended transform independently.
+ */
+describe("toOscalControlId — spec-authored mapping (ISC-104)", () => {
+  it("maps every print-form id in the shipped control set to its real rev5 catalog id", () => {
+    // Hand-verified against the NIST catalog id convention:
+    expect(toOscalControlId("SI-6(1)")).toBe("si-6.1");
+    expect(toOscalControlId("AC-6(9)")).toBe("ac-6.9");
+    expect(toOscalControlId("AU-12(3)")).toBe("au-12.3");
+    expect(toOscalControlId("SC-28")).toBe("sc-28");
+    expect(toOscalControlId("SA-10")).toBe("sa-10");
+    expect(toOscalControlId("SC-7")).toBe("sc-7");
+    expect(toOscalControlId("RA-3")).toBe("ra-3");
+    expect(toOscalControlId("CA-7")).toBe("ca-7");
+  });
+
+  it("handles hypothetical nested numeric enhancements", () => {
+    expect(toOscalControlId("SI-4(1)(2)")).toBe("si-4.1.2");
+  });
+
+  it("throws on letter-part parens — statement parts are NOT controls (ac-2_smt.a, never .a)", () => {
+    expect(() => toOscalControlId("AC-2(a)")).toThrow(/not a valid OSCAL token/);
+  });
+
+  it("throws on whitespace variants rather than guessing", () => {
+    expect(() => toOscalControlId("SI-6 (1)")).toThrow(/not a valid OSCAL token/);
   });
 });

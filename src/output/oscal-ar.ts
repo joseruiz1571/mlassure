@@ -54,6 +54,26 @@ function findingRemarks(status: Judgment["status"]): string | undefined {
   );
 }
 
+/**
+ * OSCAL token datatypes forbid parentheses, so the SP 800-53 print form
+ * "SI-6(1)" is not a legal control-id — NIST's own catalogs write it
+ * "si-6.1" (lowercase, dotted enhancement). Found by validating against the
+ * official 1.1.2 schema (ISC-104): our 40+ self-authored OSCAL tests never
+ * caught it, which is exactly why the external check exists. Fail-loud when
+ * the mapped id still isn't a valid token — never emit a known-invalid id.
+ * The raw print-form id is preserved on each finding as a
+ * `source-control-id` prop (prop VALUES are free strings).
+ */
+export function toOscalControlId(controlId: string): string {
+  const mapped = controlId.toLowerCase().replace(/\((\d+)\)/g, ".$1");
+  if (!/^(\p{L}|_)(\p{L}|\p{N}|[.\-_])*$/u.test(mapped)) {
+    throw new Error(
+      `toOscalControlId: "${controlId}" maps to "${mapped}", which is not a valid OSCAL token — refusing to emit a schema-invalid control-id.`
+    );
+  }
+  return mapped;
+}
+
 function buildObservations(result: ControlResult): OscalObservation[] {
   return result.citedEvidence.map((ev) => ({
     uuid: randomUUID(),
@@ -75,6 +95,9 @@ function buildFinding(
 ): OscalFinding {
   const j = result.judgment;
   const props: OscalProp[] = [
+    // The raw SP 800-53 print-form id ("SI-6(1)") — target-id below carries
+    // the OSCAL token form ("si-6.1"); this prop keeps the two linkable.
+    { name: "source-control-id", value: result.controlId, ns: MLASSURE_NS },
     { name: "judgment-status", value: j.status, ns: MLASSURE_NS },
     // "confidence" is the model's self-report for every pattern EXCEPT the
     // code-determined ones (`attestation` M3b, `deterministic` M3d — see
@@ -120,8 +143,14 @@ function buildFinding(
     description: j.rationale,
     props,
     target: {
+      // Known simplification, disclosed rather than faked: mlassure assesses
+      // at CONTROL granularity, so target-id carries the catalog control id
+      // ("si-6.1"), not a true per-objective id ("si-6.1_obj.N" — those live
+      // in a catalog/AP join this tool doesn't perform). "objective-id" is
+      // the closer of the two schema-allowed target types. A future
+      // catalog-join slice could emit real objective ids.
       type: "objective-id",
-      "target-id": result.controlId,
+      "target-id": toOscalControlId(result.controlId),
       status: {
         state: toObjectiveState(j.status),
         // Preserve the precise mlassure verdict the binary state cannot express.
@@ -195,12 +224,14 @@ export function toOscalAssessmentResults(
             "control-selections": [
               {
                 "include-controls": report.results.map((r) => ({
-                  "control-id": r.controlId,
+                  "control-id": toOscalControlId(r.controlId),
                 })),
               },
             ],
           },
-          observations,
+          // The AR schema requires minItems 1 — a run whose controls cited no
+          // evidence must OMIT the key, not emit an empty array (ISC-104).
+          ...(observations.length > 0 ? { observations } : {}),
           findings,
         },
       ],
