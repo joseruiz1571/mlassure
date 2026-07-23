@@ -85,6 +85,52 @@ The image never bakes in `ANTHROPIC_API_KEY` — no build `ARG`, no `ENV` with a
 
 ---
 
+## Custody chain
+
+Every assessment run can emit a tamper-evident evidence bundle:
+
+```bash
+bun run dev -- assess \
+  --controls fixtures/controls/nist-subset.yaml \
+  --target fixtures/targets/model-clean.json \
+  --oscal out/results.json --narrative out/report.md \
+  --bundle out/bundle-$(date +%Y%m%dT%H%M%S)   # fresh dir per run — the writer refuses non-empty dirs
+
+# Verify integrity + completeness anytime (exit 1 names every violation; authenticity is the cosign step below):
+bun run dev -- verify-bundle out/bundle-<timestamp>
+```
+
+The bundle holds `report.json`, one `evidence/<uuid>.json` per retrieved evidence item (**full payloads, cited or not** — custody covers what the assessor saw), the run's OSCAL and narrative outputs, and `manifest.json`: per-file sha256 + byte size and a root hash over the whole set, written **last** so a crash mid-write leaves a loudly-unverifiable directory rather than a manifest describing files that never landed.
+
+Sign the manifest with Cosign — the manifest covers the files, the signature covers the manifest:
+
+```bash
+# Local (key pair):
+cosign sign-blob --key cosign.key --yes --bundle out/bundle-<ts>/manifest.sig.bundle out/bundle-<ts>/manifest.json
+cosign verify-blob --key cosign.pub --bundle out/bundle-<ts>/manifest.sig.bundle out/bundle-<ts>/manifest.json
+
+# CI (keyless, Sigstore OIDC — pin the issuer and identity, same pattern as cgep-capstone):
+cosign sign-blob --yes --bundle manifest.sig.bundle manifest.json
+cosign verify-blob --bundle manifest.sig.bundle \
+  --certificate-identity-regexp "https://github.com/.*mlassure" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" manifest.json
+```
+
+**Custody properties, each mapped to its mechanism:**
+
+| Property | Mechanism |
+|----------|-----------|
+| Integrity | per-file sha256, recomputed from bytes on disk |
+| Completeness | root hash + strict extra-file detection — unaccounted content fails, no junk-file allowlist (an allowlist is an attacker's hiding spot); only the named signature artifacts are exempt |
+| Authenticity | Cosign signature over the manifest |
+| Tamper-evidence | any single-byte change in any covered file fails verification and names the file |
+
+**What none of this proves:** that the assessment methodology was sound. A signature authenticates *who* produced the bytes and that they are *unaltered* — it says nothing about whether the judgment inside them was right. Vendors routinely oversell hash-and-sign as an "audit trail"; it is a custody trail.
+
+**⚠️ Security note:** the bundle contains **raw retrieved evidence at rest** — IAM role documents, CloudTrail events, endpoint configuration — cited or not. Treat a bundle with the same access controls as the AWS account it describes. Bundle output paths (`out/`, `bundles/`) and key material (`*.key`) are gitignored; never commit either.
+
+---
+
 ## Demo output
 
 `fraud-detection-v2` — clean monitoring setup, all 8 controls:
@@ -160,7 +206,6 @@ CLI (assess command)
 **Partial**
 
 - **Pattern differentiation in loop mechanics** — `synthesis`, `sufficiency`, and `correlation` currently differ only in how the control is framed to the model (`PATTERN_DESCRIPTIONS` in `src/agent/prompts.ts`); they share the same loop. Whether the categories warrant separate mechanics — or whether sufficiency and correlation collapse into synthesis — is an M3 design question.
-- **Custody chain and evidence retention** — mlassure hashes evidence at ingestion and preserves it for the full run; the pattern for signing and retaining artifacts under immutable storage (OIDC-signed, transparency-logged) is implemented in the separate [cgep-capstone](https://github.com/joseruiz1571/cgep-capstone) evidence layer and can be integrated in M3.
 - **Collection scope disclosure** — whether assessed outputs disclose the collectors' IAM scope and retrieval permissions is an M3 design decision.
 
 **Implemented (M3a, 2026-07-19)**
@@ -186,6 +231,10 @@ CLI (assess command)
 **Implemented (M3f, 2026-07-22)**
 
 - **Tag provenance** — each control's pattern tag can now carry an authority record: an optional `tagProvenance` array of directional migration records (`pattern`, `assigned` date, required `rationale`, and `supersedes` naming the previous pattern). The loader validates seven invariants fail-loud — origin records carry no `supersedes`, every later record's `supersedes` must equal its predecessor's pattern (a deliberately redundant chain-integrity check), dates must be non-decreasing (same-day migrations are legal), and the history head must equal the control's live `pattern` field, so tag and history can never silently drift apart. Historical records are shape-checked only — a retired pattern name in an old record stays loadable forever; registry membership is enforced solely at the head. Both output surfaces disclose provenance additively: the narrative renders a per-control "Tag provenance" list (`tagged <pattern> (date)` for the origin, `<from> → <to> (date): rationale` for migrations) and OSCAL findings gain `pattern-assigned` and per-migration `pattern-migration` props — with zero new props when a control set records no provenance. **The fixture's provenance is real, and deliberately boring:** all 8 controls carry origin records only, with dates and SHAs reconstructed from this repo's actual git history (`9b00bbf` 2026-06-10, `cffefdc` 2026-07-19) — no tag in this repo has ever migrated, so no migration is recorded. A provenance feature that shipped with fabricated history would violate the same invariant the citation guard enforces for evidence; migration mechanics are pinned by synthetic-data tests instead (including the documented-legal `A → B → A` re-adoption chain).
+
+**Implemented (M3g, 2026-07-22)**
+
+- **Custody chain and evidence retention** — the [cgep-capstone](https://github.com/joseruiz1571/cgep-capstone) custody pattern integrated into mlassure's own shape (a local CLI, not a CI pipeline): `assess --bundle <dir>` emits a tamper-evident bundle (full retrieved evidence with payloads cited-or-not, the run's outputs, and a manifest with per-file sha256 + a canonical root hash over NFC-normalized sorted path/hash pairs, written manifest-last); `verify-bundle` re-verifies everything fail-loud — bit-flips, missing files, **extra** files, symlinks, and manifest/rootHash inconsistency all exit 1 naming the violation, with exactly the Cosign signature artifacts exempt from extra-file detection. Signing chain proven empirically with an ephemeral key (good sig verifies; tampered manifest and wrong-key verification both fail); keyless OIDC documented for future CI. See [Custody chain](#custody-chain) for the four properties, their mechanisms, and what the signature deliberately does NOT claim to prove.
 
 **Designed**
 
@@ -225,7 +274,7 @@ M3a added SC-7, RA-3, and CA-7 by reusing existing collectors and patterns — z
 | M3d: deterministic-pattern LLM bypass (SC-28, SC-7) | Shipped, live-verified (2026-07-19) |
 | M3e: Docker packaging | Designed + statically verified, build/run DEFERRED (2026-07-19) |
 | M3f: tag provenance (directional migration records, authority-controlled) | Shipped, unit-verified (2026-07-22) |
-| M3 (remaining): custody chain | Planned |
+| M3g: custody chain (evidence bundle, verify-bundle, Cosign signing) | Shipped, live-verified (2026-07-22) |
 | M4: live AWS read-only provider | Planned |
 
 ---

@@ -4,6 +4,7 @@ import type {
   Judgment,
   AgentPattern,
   TagProvenanceRecord,
+  Evidence,
 } from "../types.js";
 import type { AwsProvider } from "../providers/aws-provider.interface.js";
 import type { LlmProvider } from "../llm/llm-provider.interface.js";
@@ -61,6 +62,15 @@ export type ControlResult = {
   collectorsCited: number;
   /** Deterministic bucket derived from evidenceCoverage — never the model's self-report. */
   coverageConfidence: Judgment["confidence"];
+  /**
+   * Custody retention (M3g): the control's FULL evidence store contents —
+   * payloads included, cited or not. Custody covers what the assessor SAW,
+   * not just what it cited; the citation guard already guarantees
+   * citedEvidence ⊆ this set. Optional on the type so hand-built results
+   * (tests, older producers) stay valid, but the runner always populates it
+   * and the bundle writer fails loud when it's absent.
+   */
+  retrievedEvidence?: Evidence[];
   /**
    * The control's tag-provenance history (M3f), copied per-record at
    * construction so downstream consumers never share mutable record refs
@@ -159,6 +169,7 @@ export async function runAssessment(
       collectorsCalled,
       collectorsCited,
       coverageConfidence: deriveCoverageConfidence(evidenceCoverage, collectorsTagged),
+      retrievedEvidence: store.bundle().map((e) => ({ ...e })),
       ...(control.tagProvenance !== undefined
         ? { tagProvenance: control.tagProvenance.map((r) => ({ ...r })) }
         : {}),

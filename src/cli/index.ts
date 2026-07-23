@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { loadControlSet } from "../loaders/control-loader.js";
 import { FixtureProvider } from "../providers/fixture-provider.js";
 import { EvidenceStore } from "../store/evidence-store.js";
@@ -7,6 +7,7 @@ import { AnthropicProvider } from "../llm/anthropic-provider.js";
 import { runAssessment } from "../runner/assessment-runner.js";
 import { toOscalAssessmentResults } from "../output/oscal-ar.js";
 import { toNarrativeMarkdown } from "../output/narrative.js";
+import { writeEvidenceBundle, verifyEvidenceBundle } from "../output/bundle.js";
 import type { AssessmentTarget } from "../types.js";
 import { isCodeDetermined } from "../types.js";
 
@@ -14,11 +15,13 @@ const USAGE = `
 mlassure — agentic AI-control assurance
 
 Usage:
-  mlassure assess --controls <path> --target <path> [--live] [--oscal <path>] [--narrative <path>]
+  mlassure assess --controls <path> --target <path> [--live] [--oscal <path>] [--narrative <path>] [--bundle <dir>]
+  mlassure verify-bundle <dir>
   mlassure --help
 
 Commands:
-  assess    Assess a target model against a control set
+  assess           Assess a target model against a control set
+  verify-bundle    Verify a custody bundle (integrity + completeness; signature checked separately via cosign)
 
 Options:
   --controls <path>    Path to YAML or JSON control set file
@@ -26,6 +29,7 @@ Options:
   --live               Run the full agent loop (requires ANTHROPIC_API_KEY in .env)
   --oscal <path>       Write OSCAL Assessment Results JSON to <path> (implies --live)
   --narrative <path>   Write the Markdown assurance narrative to <path> (implies --live)
+  --bundle <dir>       Write a tamper-evident custody bundle to a fresh <dir> (implies --live)
   --help, -h           Show this help text
 `.trim();
 
@@ -37,22 +41,51 @@ const STATUS_ICON: Record<string, string> = {
   "insufficient-evidence": "?",
 };
 
-function parseArgs(argv: string[]): Record<string, string> {
-  const result: Record<string, string> = {};
+type ParsedArgs = { flags: Record<string, string>; positionals: string[] };
+
+const VALUE_FLAGS = new Set(["controls", "target", "oscal", "narrative", "bundle"]);
+const BOOLEAN_FLAGS = new Set(["live", "help"]);
+
+/**
+ * Fail-loud parsing (silent-failure-hunter + code-reviewer, M3g): a
+ * value-taking flag with a missing or `--`-prefixed value used to be
+ * silently DROPPED — `assess ... --bundle` (directory forgotten) ran
+ * scaffold-only with exit 0 while the operator believed a custody bundle
+ * existed. Unknown flags (`--bundel`) were silent no-ops. Both now exit 1.
+ */
+function parseArgs(argv: string[]): ParsedArgs {
+  const flags: Record<string, string> = {};
+  const positionals: string[] = [];
   for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
+    const arg = argv[i]!;
     if (arg === "--help" || arg === "-h") {
-      result["help"] = "true";
-    } else if (arg === "--live") {
-      result["live"] = "true";
-    } else if (arg?.startsWith("--") && argv[i + 1] && !argv[i + 1]!.startsWith("--")) {
-      result[arg.slice(2)] = argv[i + 1]!;
-      i++;
-    } else if (!arg?.startsWith("--")) {
-      result["command"] = arg ?? "";
+      flags["help"] = "true";
+    } else if (arg.startsWith("--")) {
+      const name = arg.slice(2);
+      if (BOOLEAN_FLAGS.has(name)) {
+        flags[name] = "true";
+      } else if (VALUE_FLAGS.has(name)) {
+        const value = argv[i + 1];
+        if (value === undefined || value.startsWith("--")) {
+          console.error(`Error: ${arg} requires a value`);
+          console.error(USAGE);
+          process.exit(1);
+        }
+        flags[name] = value;
+        i++;
+      } else {
+        console.error(`Error: unknown flag ${arg}`);
+        console.error(USAGE);
+        process.exit(1);
+      }
+    } else {
+      // First positional is the command; later ones are command arguments
+      // (previously every positional overwrote "command", which made a
+      // command with an argument — verify-bundle <dir> — unparseable).
+      positionals.push(arg);
     }
   }
-  return result;
+  return { flags, positionals };
 }
 
 async function runScaffoldOnly(
@@ -81,7 +114,8 @@ async function runLive(
   controlsPath: string,
   targetPath: string,
   oscalPath?: string,
-  narrativePath?: string
+  narrativePath?: string,
+  bundleDir?: string
 ): Promise<void> {
   const controlSet = await loadControlSet(controlsPath);
   const targetJson = JSON.parse(readFileSync(targetPath, "utf-8")) as AssessmentTarget;
@@ -131,9 +165,16 @@ async function runLive(
   // which audit artifact exists on disk from console scrollback alone.
   let oscalWritten: string | undefined;
 
+  // Documents are generated ONCE and shared between the standalone write and
+  // the custody bundle, so the bundle's copies are byte-identical to the
+  // standalone artifacts (same run, same serialization).
+  const oscal =
+    oscalPath || bundleDir ? toOscalAssessmentResults(report, controlSet) : undefined;
+  const narrative =
+    narrativePath || bundleDir ? toNarrativeMarkdown(report, controlSet) : undefined;
+
   if (oscalPath) {
     try {
-      const oscal = toOscalAssessmentResults(report, controlSet);
       writeFileSync(oscalPath, JSON.stringify(oscal, null, 2), "utf-8");
       oscalWritten = oscalPath;
       console.log(`  OSCAL Assessment Results written to ${oscalPath}\n`);
@@ -146,8 +187,7 @@ async function runLive(
 
   if (narrativePath) {
     try {
-      const narrative = toNarrativeMarkdown(report, controlSet);
-      writeFileSync(narrativePath, narrative, "utf-8");
+      writeFileSync(narrativePath, narrative!, "utf-8");
       console.log(`  Assurance narrative written to ${narrativePath}\n`);
     } catch (err) {
       const oscalNote = oscalWritten
@@ -158,21 +198,76 @@ async function runLive(
       );
     }
   }
+
+  if (bundleDir) {
+    try {
+      const manifest = writeEvidenceBundle(report, bundleDir, {
+        ...(oscal !== undefined ? { oscal } : {}),
+        ...(narrative !== undefined ? { narrative } : {}),
+      });
+      console.log(
+        `  Custody bundle written to ${bundleDir} (${manifest.files.length} files, root ${manifest.rootHash.slice(0, 16)}…)`
+      );
+      console.log(
+        `  Verify anytime:  mlassure verify-bundle ${bundleDir}\n`
+      );
+    } catch (err) {
+      // Report full on-disk state (hunter, M3g): the standalone artifacts
+      // that DID land, and that bundleDir may now hold a partial,
+      // manifest-less directory the next --bundle run will refuse.
+      const written = [
+        ...(oscalWritten ? [`OSCAL written to ${oscalWritten}`] : []),
+        ...(narrativePath ? [`narrative written to ${narrativePath}`] : []),
+      ];
+      const stateNote = written.length > 0 ? ` (${written.join("; ")})` : "";
+      throw new Error(
+        `Failed to write custody bundle to ${bundleDir}: ${err instanceof Error ? err.message : String(err)}${stateNote}. ${bundleDir} may hold a partial, manifest-less bundle — delete it before retrying.`,
+        { cause: err }
+      );
+    }
+  }
+}
+
+function runVerifyBundle(dir: string): never {
+  const result = verifyEvidenceBundle(dir);
+  if (result.ok) {
+    // Say precisely what exit 0 means (code-reviewer + hunter, M3g): this
+    // command proves integrity + completeness; only the cosign signature
+    // anchors the manifest itself. Never let "OK" read as "custody intact".
+    console.log(
+      `verify-bundle: OK — ${result.checkedFiles} files verified, root ${result.rootHash}`
+    );
+    console.log(
+      `  Scope: integrity + completeness only. Authenticity requires the signature:`
+    );
+    const sigPresent = existsSync(join(dir, "manifest.sig.bundle"));
+    console.log(
+      sigPresent
+        ? `  Signature artifacts present but NOT verified by this command — run:\n    cosign verify-blob --key cosign.pub --bundle ${join(dir, "manifest.sig.bundle")} ${join(dir, "manifest.json")}`
+        : `    cosign verify-blob --key cosign.pub --bundle <manifest.sig.bundle> ${join(dir, "manifest.json")}\n  (no signature artifacts found in this bundle)`
+    );
+    process.exit(0);
+  }
+  console.error(`verify-bundle: FAILED — ${result.errors.length} violation(s):`);
+  for (const e of result.errors) {
+    console.error(`  ✗ ${e}`);
+  }
+  process.exit(1);
 }
 
 async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
+  const { flags, positionals } = parseArgs(process.argv.slice(2));
 
-  if (args["help"]) {
+  if (flags["help"]) {
     console.log(USAGE);
     process.exit(0);
   }
 
-  const command = args["command"];
+  const command = positionals[0];
 
   if (command === "assess") {
-    const controls = args["controls"];
-    const target = args["target"];
+    const controls = flags["controls"];
+    const target = flags["target"];
 
     if (!controls || !target) {
       console.error("Error: assess requires --controls <path> and --target <path>");
@@ -182,16 +277,34 @@ async function main(): Promise<void> {
 
     const absControls = resolve(controls);
     const absTarget = resolve(target);
-    const oscalPath = args["oscal"] ? resolve(args["oscal"]) : undefined;
-    const narrativePath = args["narrative"] ? resolve(args["narrative"]) : undefined;
+    const oscalPath = flags["oscal"] ? resolve(flags["oscal"]) : undefined;
+    const narrativePath = flags["narrative"] ? resolve(flags["narrative"]) : undefined;
+    const bundleDir = flags["bundle"] ? resolve(flags["bundle"]) : undefined;
 
-    // --oscal and --narrative each require a real assessment run, so either implies --live.
-    if (args["live"] || oscalPath || narrativePath) {
-      await runLive(absControls, absTarget, oscalPath, narrativePath);
+    // --oscal, --narrative, and --bundle each require a real assessment run,
+    // so any of them implies --live.
+    if (flags["live"] || oscalPath || narrativePath || bundleDir) {
+      await runLive(absControls, absTarget, oscalPath, narrativePath, bundleDir);
     } else {
       await runScaffoldOnly(absControls, absTarget);
     }
     return;
+  }
+
+  if (command === "verify-bundle") {
+    const dir = positionals[1];
+    if (!dir) {
+      console.error("Error: verify-bundle requires a bundle directory argument");
+      console.error(USAGE);
+      process.exit(1);
+    }
+    if (positionals.length > 2) {
+      console.error(
+        `Error: verify-bundle takes exactly one directory (got ${positionals.length - 1}: ${positionals.slice(1).join(", ")})`
+      );
+      process.exit(1);
+    }
+    runVerifyBundle(resolve(dir));
   }
 
   console.error(`Unknown command: ${command ?? "(none)"}`);

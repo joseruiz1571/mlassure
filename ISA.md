@@ -1,15 +1,15 @@
 ---
-task: mlassure M3f — tag provenance (versioned pattern tags, directional migration records)
-slug: mlassure-m3f
-effort: E2
+task: mlassure M3g — custody chain (tamper-evident evidence bundle, manifest, verify-bundle, cosign signing)
+slug: mlassure-m3g
+effort: E3
 phase: complete
-progress: 40/40
+progress: 52/52
 mode: algorithm
-started: 2026-07-22T00:00:00Z
-updated: 2026-07-22T23:00:00Z
+started: 2026-07-22T23:15:00Z
+updated: 2026-07-23T01:30:00Z
 project: mlassure
 effort_source: classifier
-prior_phase_note: "M3a/b/c/d/e complete — see sections above."
+prior_phase_note: "M3a-f complete — see sections above."
 ---
 
 ## Problem
@@ -722,6 +722,8 @@ Deliver a working TypeScript project at `~/Desktop/GitHub/mlassure/` with a pass
 
 ## Changelog
 
+- 2026-07-23 (M3g): conjectured: a custody verifier whose WRITER is rigorously fail-loud (manifest-last, non-empty-dir refusal, UUID gates) inherits that rigor — verifying "what the writer produces" felt equivalent to verifying "what's on disk." refuted by: both reviewers showed the verifier consumes UNTRUSTED input the writer never produces — an empty-files manifest passed all three checks vacuously ("OK — 0 files verified" on a gutted bundle), absolute/`..` manifest paths would have turned verification into an arbitrary-file read primitive, and manifest metadata sat outside the rootHash so unsigned verification called a targetName-swapped bundle "intact"; my own cosign test had silently encoded that last gap by relying on the signature to catch the exact tamper the hash layer missed. learned: (1) a verifier's threat model is the ATTACKER'S output space, not the writer's — every "the writer never produces this shape" is precisely the shape the verifier must reject as proof of tampering, which inverts the usual reuse instinct (writer invariants are the verifier's VIOLATION list, not its trust assumptions). (2) When a test for layer B (signature) catches a tamper that layer A (hash) should also catch, that's not defense-in-depth — it's layer A's gap wearing layer B's coverage; check each layer catches its own class alone. (3) The M3f consumption-point-guard lesson generalized within one day: loader→renderer then, writer→verifier now — same shape, "the component that CONSUMES a data structure must enforce its invariants itself." criterion now: ISC-415..421 added and passing; standing question for any future verify-anything surface: "what input could reach this that the legitimate producer can never emit, and does each check fail on it alone?"
+
 - 2026-07-22 (M3f): conjectured: pre-BUILD advisor rigor (five design decisions locked before code, including the explicit "origin-only fixture proves almost none of the invariants" test-design principle) plus per-invariant synthetic tests would leave delegation review little to find — the sixth slice testing whether front-loaded design review can substitute for post-build hunting. refuted by: the hunter found 8 real findings anyway, including two empirically-confirmed HIGHs where BOTH output renderers would emit literal `undefined` into auditor-facing artifacts on loader-bypassing input — and the sharpest instance: my own narrative doc comment named the exact `undefined →` failure, guarded it only at index 0, and my own regression test asserted `not.toContain("undefined")` for the origin case only, staying green while the migration-record variant of the same defect was live. The advisor call and the hunter caught disjoint gap classes AGAIN (design-level: origin format, historical-pattern registry trap; implementation-level: consumption-point guards, unknown-key discards) — sixth consecutive slice confirming the pattern. learned: (1) when a doc comment says "X can never happen," that sentence is a test specification — every variant of X it implies must have an assertion, not just the variant that prompted the comment; a guard plus a comment plus a partial test is precisely how a defect hides in green. (2) The recurring "outputs trust loader invariants on a plain type" category now has a named, reusable fix shape: an exported `assert<Thing>Shape()` guard at every consumption point, shared by all consumers so they can never disagree on invalid input (the narrative/OSCAL disagreement on the identical empty array — dangling header vs. silent normalization — is the tell that consumption-point validation is missing). criterion now: ISC-366..369 added and passing; the consumption-point-guard shape is the standing pattern for any future field added to ControlResult that carries loader-enforced invariants.
 
 ## M3 Features (M3e)
@@ -794,7 +796,117 @@ Deliver a working TypeScript project at `~/Desktop/GitHub/mlassure/` with a pass
 | ISC-323–326 | read | README.md Docker section | present, correct patterns | Read |
 | ISC-327–329 | agent | code-reviewer + silent-failure-hunter + Cato attempt | findings recorded | Agent |
 
+## M3 Features (M3g)
+
+| name | description | satisfies | depends_on | parallelizable |
+|------|-------------|-----------|------------|----------------|
+| evidence-retention | `ControlResult.retrievedEvidence` — full store contents incl. payloads, always retained | ISC-370,371 | none | no |
+| bundle-writer | `src/output/bundle.ts` — bundle dir + hash manifest, written manifest-last | ISC-372..383,401 | evidence-retention | no |
+| verify-command | CLI `verify-bundle <dir>` — recompute hashes, fail-loud on any mismatch | ISC-384..391,399 | bundle-writer | no |
+| cli-bundle | `assess --bundle <dir>` (implies --live), composes with --oscal/--narrative | ISC-392,393,394 | bundle-writer | no |
+| signing | cosign sign/verify: ephemeral-key empirical round-trip + tamper test; keyless documented for CI | ISC-395..398 | bundle-writer | no |
+| bundle-tests | writer + verify + tamper coverage, full suite green | ISC-400,402..405 | all above | no |
+| readme-m3g | ledger + status table; custody-properties framing | ISC-406 | all above | no |
+| delegation-review | code-reviewer + silent-failure-hunter | ISC-407,408 | all above | no |
+
+## M3 Criteria (M3g — custody chain: tamper-evident evidence bundle + manifest + verification + signing)
+
+Integrates the cgep-capstone / GRC-Week-4 custody pattern into mlassure's own shape (a local CLI, not a CI pipeline): every assessment run can emit a content-addressable evidence bundle — full retrieved evidence with payloads, outputs, and a hash manifest with a root hash — that `verify-bundle` re-verifies fail-loud, and that cosign can sign/verify (ephemeral-key path proven empirically in-session; keyless OIDC documented for future CI, where the ambient identity lives). Custody properties: integrity (per-file sha256 + root hash), authenticity (cosign signature over the manifest), completeness (manifest accounts for every file, extra files fail), tamper-evidence (any bit-flip fails verification loudly).
+
+**Evidence retention**
+- [x] ISC-370: `ControlResult` gains `retrievedEvidence: Evidence[]` — the control's FULL evidence store contents (payloads included, cited or not: custody covers what the assessor saw, not just what it cited), copied per-item at construction
+- [x] ISC-371: `bun run typecheck` exits 0 after all M3g changes
+
+**Bundle writer (`src/output/bundle.ts`)**
+- [x] ISC-372: exports `writeEvidenceBundle(report, dir, opts?)` where opts carries optional oscal document and narrative markdown from the same run
+- [x] ISC-373: bundle contains `report.json` that parses back deep-equal to the in-memory report (round-trip)
+- [x] ISC-374: bundle contains one `evidence/<id>.json` per retrieved evidence item across all controls, each wrapping the Evidence with its controlId and a cited flag
+- [x] ISC-375: each evidence file preserves the item's payload and sha256 exactly as retrieved
+- [x] ISC-376: bundle includes `oscal.json` when the run produced one
+- [x] ISC-377: bundle includes `narrative.md` when the run produced one
+- [x] ISC-378: `manifest.json` lists every bundle file with relative path, sha256, and byte size
+- [x] ISC-379: the manifest excludes itself from its own files list (it is the root of trust, covered by the signature, not by itself)
+- [x] ISC-380: manifest carries `rootHash` = sha256 over the sorted `path:sha256` lines, construction documented in code
+- [x] ISC-381: manifest carries bundleFormatVersion, createdAt, targetName, and controlSetVersion
+- [x] ISC-382: the manifest is written LAST — a crash mid-write leaves a bundle with no manifest (loudly unverifiable), never a manifest describing files that were not yet written
+- [x] ISC-383: the writer throws when the target directory exists and is non-empty — runs never mix into one bundle
+
+**verify-bundle command**
+- [x] ISC-384: CLI gains a `verify-bundle <dir>` command
+- [x] ISC-385: verify-bundle exits 0 on an untampered bundle and reports the verified file count and matching root hash
+- [x] ISC-386: tamper test — flipping one byte of one evidence file makes verify-bundle exit 1 and NAME the mismatched file
+- [x] ISC-387: a bundle with no manifest.json exits 1 with an explicit "unverifiable" error
+- [x] ISC-388: a manifest entry whose file is missing on disk exits 1 naming the missing path
+- [x] ISC-389: a file on disk not accounted for in the manifest exits 1 (completeness — unaccounted content in a custody bundle is a violation, not a warning)
+- [x] ISC-390: a manifest whose recomputed rootHash mismatches its stored rootHash exits 1
+- [x] ISC-391: CLI `--help` documents both `verify-bundle` and `--bundle`
+
+**assess integration**
+- [x] ISC-392: `assess --bundle <dir>` writes the bundle and implies `--live` (same pattern as `--oscal`/`--narrative`)
+- [x] ISC-393: a single run with `--bundle`, `--oscal`, and `--narrative` writes all three; the bundle's copies match the standalone outputs
+- [x] ISC-394: `assess` without `--bundle` writes no bundle (existing behavior unchanged)
+
+**Signing (cosign — local key empirical, keyless documented)**
+- [x] ISC-395: README documents the custody chain: sign-blob over manifest.json (keyless form for CI with OIDC issuer pinning, key form for local), verify-blob, and the four custody properties
+- [x] ISC-396: empirical signing round-trip — ephemeral `cosign generate-key-pair` in a temp dir, `sign-blob --key` over a real manifest, `verify-blob` passes (cosign 2.x is installed on this machine; test skips LOUDLY with a named reason if cosign is absent, never silently)
+- [x] ISC-397: authenticity tamper test — a modified manifest fails `cosign verify-blob` against the original signature
+- [x] ISC-398: Anti: no private key material is ever written inside the repo tree — test keys live in temp dirs only, and .gitignore covers `*.key`
+
+**Anti-criteria**
+- [x] ISC-399: Anti: verify-bundle never reports success when ANY check failed — one aggregate exit code, any failure → 1
+- [x] ISC-400: Anti: no new runtime npm dependency (node:crypto + node:fs only; cosign is an external tool invoked only by tests and documented commands, never imported)
+- [x] ISC-401: Anti: the bundle writer never fabricates evidence — evidence files come solely from `retrievedEvidence` actually returned by collectors during the run being bundled
+
+**Tests + integrity**
+- [x] ISC-402: `src/output/bundle.test.ts` covers writer structure, manifest correctness, round-trip, and the non-empty-dir refusal
+- [x] ISC-403: verification tests cover the clean pass plus all four failure classes (bit-flip, missing file, extra file, missing/corrupt manifest)
+- [x] ISC-404: `bun test` exits 0 with passing count > 150 baseline
+- [x] ISC-405: live CLI regression — `assess` against the clean fixture exits 0 with 8 control rows
+
+**README**
+- [x] ISC-406: README ledger moves custody chain from "can be integrated in M3" to Implemented (M3g) with the four custody properties named; status table gains the M3g row and the "M3 (remaining)" row is resolved
+
+**Advisor-driven additions (2026-07-22)**
+- [x] ISC-409: rootHash is sha256 over the JSON encoding of codepoint-sorted `[path, sha256]` pairs — injective (no `path:hash` delimiter injection), with paths NFC-normalized and `/`-separated so a bundle built on macOS (NFD filesystem) verifies identically elsewhere
+- [x] ISC-410: verify-bundle exempts EXACTLY the named signature-artifact set (`manifest.json`, `manifest.sig.bundle`, `manifest.json.sig`, `cosign.pub`) from extra-file detection — the signature lives in the bundle but cannot be in the manifest it signs; everything else strict (no .DS_Store exemption — an allowlist is an attacker's hiding spot)
+- [x] ISC-411: a symlink inside a bundle fails verification (never traversed, never counted as a file)
+- [x] ISC-412: README carries a security note — the bundle holds RAW retrieved evidence (IAM role documents, CloudTrail events) at rest, cited or not, and must be access-controlled; bundle output paths gitignored
+- [x] ISC-413: negative authenticity test — a manifest signed by key A fails `cosign verify-blob` against key B (a passing good-signature test alone proves nothing about tamper detection)
+- [x] ISC-414: evidence filenames are validated against a UUID regex at write time — a hostile or corrupted evidence id can never smuggle `../` into a bundle path
+
+**Delegation review**
+- [x] ISC-407: code-reviewer invoked on new/changed files, findings recorded in `## Decisions`
+- [x] ISC-408: silent-failure-hunter invoked on new/changed files, findings recorded in `## Decisions`
+
+**Review-driven additions (2026-07-23, all findings fixed in-session)**
+- [x] ISC-415: parseArgs fails loud (exit 1) on a value-flag with a missing or `--`-prefixed value AND on unknown flags — `assess ... --bundle` (dir forgotten) previously ran scaffold-only with exit 0 while the operator believed a bundle existed
+- [x] ISC-416: the verifier rejects an empty-files manifest and requires a report.json entry — a gutted bundle plus trivial manifest previously verified "OK — 0 files"
+- [x] ISC-417: manifest entries are treated as UNTRUSTED input — absolute paths, `..`, `\`, duplicates, signature-artifact names, and malformed shapes are violations (never crashes, never reads outside the bundle)
+- [x] ISC-418: manifest metadata (targetName, controlSetVersion, createdAt, version, algorithm) is INSIDE the rootHash, and targetName/controlSetVersion are additionally cross-checked against the hash-covered report.json — metadata tampering is caught with or without a recomputed rootHash
+- [x] ISC-419: verify-bundle's OK output states its scope (integrity + completeness only) and whether signature artifacts are present-but-unverified, naming the exact cosign command — exit 0 can never read as "custody intact"
+- [x] ISC-420: REQUIRE_COSIGN=1 turns an absent cosign into a FAILING test, not a silent skip — CI can never lose authenticity coverage behind a green check
+- [x] ISC-421: I/O errors during verification (EISDIR, EACCES, unreadable dirs) and empty directories are custody violations in the report, not tool crashes; the CLI's bundle-failure error names which standalone artifacts landed and that the partial dir needs manual deletion
+
+## Test Strategy (M3g additions)
+
+| isc | type | check | threshold | tool |
+|-----|------|-------|-----------|------|
+| ISC-370,371 | grep/command | retrievedEvidence in runner + typecheck | present / exit 0 | Grep, Bash |
+| ISC-372–383 | command | `bun test` bundle writer cases | all pass | Bash |
+| ISC-384–391 | command | `bun test` verify cases + `--help` output | all pass / flags listed | Bash |
+| ISC-392–394 | command | live CLI with --bundle (+--oscal/--narrative) | files written correctly | Bash |
+| ISC-395 | read | README custody-chain section | commands + 4 properties | Read |
+| ISC-396–398 | command | cosign ephemeral-key round-trip + tamper + key hygiene | verify OK / tamper fails / no keys in tree | Bash |
+| ISC-399–401 | command | `bun test` anti-criteria assertions | all pass | Bash |
+| ISC-402–405 | command | full suite + live regression | exit 0, > 150 | Bash |
+| ISC-406 | read | README ledger + status table | M3g entries | Read |
+| ISC-407,408 | agent | code-reviewer + silent-failure-hunter | findings recorded | Agent |
+
 ## Decisions
+
+- 2026-07-23 (M3g, delegation review — code-reviewer + silent-failure-hunter in parallel, 12 findings total, all fixed in-session): the two reviews converged on one CRITICAL from different angles — `parseArgs` silently dropping a value-flag with a missing value, which downgraded `assess ... --bundle` to a scaffold-only run with exit 0 while the operator believed a custody bundle existed (the exact artifact class this milestone exists to produce). Hunter-only findings: an empty-files manifest verified "OK — 0 files verified" on a gutted bundle (the trio of checks each individually passed vacuously); manifest entry paths were trusted (absolute/`..` entries would have pointed verification at files OUTSIDE the bundle — a crafted manifest as a read primitive); malformed manifests crashed with stack traces instead of custody verdicts; `describe.skipIf` was a silent skip on any CI missing cosign (fixed with a REQUIRE_COSIGN=1 hard-fail gate); the CLI's bundle-failure error hid which artifacts had landed and that the partial dir would block the next run. Reviewer-only finding (the one the hunter missed): manifest METADATA was outside the rootHash — unsigned verification called a targetName-tampered bundle "intact," and my own cosign test had unknowingly encoded the gap by relying on the signature to catch exactly that tamper; fixed by folding metadata into the rootHash AND cross-checking targetName/controlSetVersion against the hash-covered report.json, so even an attacker who recomputes the rootHash must also break a covered file's hash. Verify-bundle's OK output now states its scope explicitly — Jose's oversold-audit-trail critique applied to our own tool's stdout, not just the README. Reviewer design note adopted as documented contract: collectors MUST mint per-retrieval UUID evidence ids (the bundle layer hard-requires it); a future live AWS collector wanting stable resource-derived ids must mint a fresh UUID per retrieval and carry the stable identifier inside the payload. Suite after all fixes: 173 pass + REQUIRE_COSIGN gate, 0 fail; live bundle regenerated under the new rootHash construction and re-probed end-to-end (verify OK with scope note → CLI fail-loud probes all exit 1 unpiped).
+
+- 2026-07-22 (M3g, Rule 2 advisor call at PLAN→BUILD): advisor endorsed the custody design ("build it") and surfaced the two failure modes that would have produced red tests on correct bundles: **(1)** the signature artifacts live in the bundle, are written after the manifest, and are therefore not IN the manifest — the strict extra-file detector would have failed every validly-signed bundle; fixed with a narrow named exemption set (ISC-410). **(2)** macOS APFS stores filenames NFD while Linux stores NFC — byte-different path strings → different rootHash → false verification failure cross-platform; fixed with NFC normalization before sort/hash (ISC-409). Further adopted: rootHash canonicalization moved from `path:hash` lines (delimiter-injectable) to JSON-encoded sorted pairs (injective); codepoint sort pinned; `algorithm: "sha256"` recorded in the manifest for agility; always-on full-payload retention confirmed correct for custody (a redaction flag would break tamper-evidence) with the consequence shipped as a README security note + gitignore (ISC-412); .DS_Store NOT exempted (any junk allowlist becomes the hiding spot — fix the source, the writer already refuses non-empty dirs); symlinks are violations (ISC-411); uuid-regex validation on evidence filenames blocks path smuggling (ISC-414); verify hashes bytes on disk only, never regenerates content (JSON key-order nondeterminism); negative signing test added — wrong-key verification must fail (ISC-413); manifest-last kept over temp-dir-rename for atomicity, manual cleanup documented. Empirical pre-check: cosign 3.0.6 ephemeral-key round-trip probed successfully in scratchpad before the advisor call (sign → Verified OK, tamper → ASN.1 failure) — also caught that piping cosign output to tail masks its exit code; tests will capture exit codes unpiped. Advisor's stale-auto-state flag (grc-week5 context) dismissed again — working against mlassure's real ISA.md.
 
 - 2026-07-22 (M3f, silent-failure-hunter findings — 8 findings, all fixed in-session): the review's consolidated root cause is the fifth consecutive confirmation of this project's recurring category — **outputs trusting loader invariants on a plain type (`ControlResult`) that does not carry them**. Concretely: a hand-built or future programmatic provenance history bypassing `validateTagProvenance` would (1) serialize literal `"undefined→deterministic@date"` into the OSCAL compliance artifact, (2) render `` `undefined` → `x` `` in the auditor narrative — the exact failure my own doc comment claimed could never happen, guarded only at index 0, with my own `not.toContain("undefined")` test asserting the origin case only, green while the defect was live — (3) render a dangling `### Tag provenance` header on an empty array, and (4) silently normalize that same invalid empty array to "absent" in OSCAL, with the two renderers disagreeing on identical invalid input. Fix adopted per the hunter's consolidated recommendation: one exported `assertProvenanceShape()` guard in types.ts called at the top of both renderers' provenance paths, plus 5 renderer tests feeding each invalid shape. Three loader gaps also fixed: unknown keys now rejected (misspelled `superceded` on an origin record was silently discarding the author's recorded predecessor — for a feature whose premise is "an authority record that can be silently repaired is not an authority record," silently discarding authored fields is the same defect in a different coat); interior line breaks in rationale rejected (a `|` literal block would escape the narrative list structure); `→`/`@` rejected in pattern/supersedes (they delimit the OSCAL prop encoding — charset constraint on new data, not repair of old). I had independently found and fixed the folded-scalar trailing-newline issue mid-review (the hunter noted the concurrent edit and confirmed the fix's scoping as legitimate canonicalization). Hunter also verified sound: lexicographic date compare (safe — fixed-width zero-padded by regex before comparison), calendar-rollover rejection, per-record copy in the runner, and the fixture honesty test. Suite after all fixes: 150 pass, 357 expect(), typecheck clean.
 
@@ -907,6 +1019,19 @@ The pattern tag on a control is a vocabulary assignment. M3f makes each assignme
 | ISC-363 | agent | silent-failure-hunter | findings recorded | Agent |
 
 ## Verification
+
+- ISC-370/371 (M3g): `Grep`/`Edit` confirm `retrievedEvidence?: Evidence[]` on ControlResult with per-item copy in runAssessment; `tsc --noEmit` exit 0 (run three times across the build).
+- ISC-372–383, 399–403, 409–411, 414 (M3g): `bun test` — 17 new bundle tests, each fail-loud mode with its own assertion: round-trip, per-item evidence files with cited flags, oscal/narrative inclusion, manifest-excludes-itself, canonical rootHash match, non-empty-dir refusal, missing-retention throw, UUID path-smuggle throw, clean pass (18-file count), bit-flip naming the file, missing-manifest "unverifiable", missing-manifested-file, .DS_Store-as-violation, exact signature-artifact exemption (plus near-miss name fails), stored-rootHash-vs-entries mismatch, symlink violation, aggregate multi-error fail. Full suite: 167 pass, 0 fail, 402 expect().
+- ISC-384–391 (M3g): CLI `verify-bundle` live-probed — real bundle: "OK — 18 files verified" exit 0; after 1-byte append: exit 1, stderr "hash mismatch: narrative.md". `--help` documents both surfaces (rg-confirmed).
+- ISC-392–394 (M3g): live run with `--oscal --narrative --bundle` against the clean fixture (real API): all three written; `cmp` proved the bundle's oscal.json and narrative.md byte-identical to the standalone artifacts. No `--bundle` → no bundle (existing tests unchanged). ISC-405 covered by the same live run: 8 control rows, exit 0.
+- ISC-395/406/412 (M3g): `Read`/rg of README — Custody chain section with both cosign command forms, four-properties table each mapped to a mechanism, the "what none of this proves" methodology note (Jose's own oversold-audit-trail critique), the raw-evidence-at-rest security warning; ledger entry Implemented (M3g); status table M3g row replaces "M3 (remaining)". `.gitignore` read-back: `*.key`, `out/`, `bundles/`.
+- ISC-396/397/398/413 (M3g): cosign 3.0.6 empirical chain inside `bun test` (exit codes captured unpiped): ephemeral keys in temp dirs (A and B), sign-blob with key A → verify-blob A passes; wrong key B fails; tampered manifest fails; bundle verification stays OK with signature artifacts present. `describe.skipIf(!cosignPresent)` with loud console.warn naming the skip reason. No key material in the repo tree (`git status` clean of keys; gitignore covers `*.key`).
+- ISC-404 (M3g): `bun test` exit 0 — final 173 pass (> 150 baseline), 416+ expect().
+- ISC-407/408 (M3g): code-reviewer + silent-failure-hunter both invoked on the full M3g diff, 12 real findings returned (2 CRITICAL, 5 HIGH), all fixed in-session — full disposition in Decisions (2026-07-23 entry).
+- ISC-415 (M3g): unpiped exit-code probes — `--bundle` with missing value → "Error: --bundle requires a value" exit 1; `--bundel z` → "unknown flag" exit 1; `verify-bundle a b` → exit 1.
+- ISC-416/417/418/421 (M3g): `bun test` — 6 new verifier tests: empty-files manifest rejected, escape/duplicate entries are violations with "proof of tampering" naming, malformed entries never throw, metadata tamper caught BOTH with a stale rootHash (rootHash mismatch) and with a maliciously recomputed one (report.json cross-check), empty directory flagged, unreadable entries reported as violations.
+- ISC-419 (M3g): live probe — regenerated real bundle verifies "OK — 18 files" followed by the scope line ("integrity + completeness only") and the no-signature-artifacts note with the exact cosign command.
+- ISC-420 (M3g): `REQUIRE_COSIGN=1 bun test src/output/bundle.test.ts` → 0 fail with the presence gate RUNNING (cosign installed here); without the env var the gate is the suite's single skip.
 
 - ISC-330/331 (M3f): `Edit` of src/types.ts confirmed — `TagProvenanceRecord` exported (pattern/assigned/rationale/supersedes?, pattern typed `string` per advisor decision #2), `ControlItem.tagProvenance?` present; typecheck green.
 - ISC-332 (M3f): `bun run typecheck` → `tsc --noEmit` exit 0 after all M3f changes (run three times across the build).

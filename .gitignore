@@ -5,3 +5,9 @@ dist/
 *.local
 bun.lockb
 .DS_Store
+
+# Custody chain (M3g): never commit key material or bundle output
+*.key
+cosign.key
+out/
+bundles/
