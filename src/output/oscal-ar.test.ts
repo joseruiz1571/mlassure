@@ -337,3 +337,82 @@ describe("toOscalAssessmentResults — observations and provenance", () => {
     expect(round).toEqual(doc);
   });
 });
+
+describe("toOscalAssessmentResults — tag provenance props (M3f)", () => {
+  it("emits pattern-assigned (head date) and one pattern-migration prop per migration, in chronological order", () => {
+    const report = sampleReport();
+    report.results[0]!.tagProvenance = [
+      { pattern: "sufficiency", assigned: "2026-01-01", rationale: "origin" },
+      {
+        pattern: "correlation",
+        assigned: "2026-02-01",
+        supersedes: "sufficiency",
+        rationale: "first migration",
+      },
+      {
+        pattern: "synthesis",
+        assigned: "2026-03-01",
+        supersedes: "correlation",
+        rationale: "second migration",
+      },
+    ];
+    const result = toOscalAssessmentResults(report)["assessment-results"].results[0]!;
+    const si6 = result.findings!.find((f) => f.target["target-id"] === "SI-6(1)")!;
+    expect(si6.props!.find((p) => p.name === "pattern-assigned")!.value).toBe(
+      "2026-03-01"
+    );
+    const migrations = si6.props!.filter((p) => p.name === "pattern-migration");
+    expect(migrations.map((p) => p.value)).toEqual([
+      "sufficiency→correlation@2026-02-01",
+      "correlation→synthesis@2026-03-01",
+    ]);
+    expect(migrations.every((p) => p.ns === MLASSURE_NS)).toBe(true);
+  });
+
+  it("emits ZERO provenance props when a result has no tagProvenance (byte-additive change)", () => {
+    const result = toOscalAssessmentResults(sampleReport())["assessment-results"]
+      .results[0]!;
+    for (const finding of result.findings!) {
+      expect(
+        finding.props!.filter(
+          (p) => p.name === "pattern-assigned" || p.name === "pattern-migration"
+        )
+      ).toHaveLength(0);
+    }
+  });
+
+  it("origin-only provenance emits pattern-assigned but no pattern-migration props", () => {
+    const report = sampleReport();
+    report.results[0]!.tagProvenance = [
+      { pattern: "synthesis", assigned: "2026-06-10", rationale: "origin" },
+    ];
+    const result = toOscalAssessmentResults(report)["assessment-results"].results[0]!;
+    const si6 = result.findings!.find((f) => f.target["target-id"] === "SI-6(1)")!;
+    expect(si6.props!.find((p) => p.name === "pattern-assigned")!.value).toBe(
+      "2026-06-10"
+    );
+    expect(si6.props!.filter((p) => p.name === "pattern-migration")).toHaveLength(0);
+  });
+
+  // Loader-bypassing shapes must throw at the point of consumption — a
+  // compliance artifact carrying "undefined→x" or silently normalizing an
+  // empty (corrupt) history to "absent" is worse than a loud failure.
+  it("throws on an EMPTY provenance array instead of silently emitting zero props", () => {
+    const report = sampleReport();
+    report.results[0]!.tagProvenance = [];
+    expect(() => toOscalAssessmentResults(report)).toThrow(
+      /empty array — an empty history is corrupt data/
+    );
+  });
+
+  it("throws when a migration record lacks supersedes instead of serializing `undefined→`", () => {
+    const report = sampleReport();
+    report.results[0]!.tagProvenance = [
+      { pattern: "synthesis", assigned: "2026-06-10", rationale: "origin" },
+      { pattern: "deterministic", assigned: "2026-07-19", rationale: "no supersedes" },
+    ];
+    expect(() => toOscalAssessmentResults(report)).toThrow(
+      /has no "supersedes" — structurally invalid history/
+    );
+  });
+});

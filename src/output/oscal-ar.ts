@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AssessmentReport, ControlResult } from "../runner/assessment-runner.js";
 import type { ControlSet, Judgment } from "../types.js";
+import { assertProvenanceShape } from "../types.js";
 import {
   OSCAL_VERSION,
   MLASSURE_NS,
@@ -88,6 +89,29 @@ function buildFinding(
   ];
   for (const gap of j.gaps) {
     props.push({ name: "gap", value: gap, ns: MLASSURE_NS });
+  }
+
+  // Tag provenance (M3f) — strictly additive: a provenance-free control set
+  // produces byte-identical props to pre-M3f output. `pattern-assigned` is
+  // the date the CURRENT tag (the history head) was assigned; each migration
+  // gets one `pattern-migration` prop, emitted in stable chronological order
+  // (array order is loader-validated), value encoding from→to@date so a
+  // consumer keying multiple same-name props can still distinguish them.
+  // undefined = legitimately absent (zero new props). Anything PRESENT is
+  // shape-asserted first: an empty array or broken supersedes chain means
+  // loader invariants were bypassed, and silently normalizing that to
+  // "absent" (or serializing "undefined→x") would corrupt the artifact.
+  if (result.tagProvenance !== undefined) {
+    assertProvenanceShape(result.tagProvenance, result.controlId);
+    const head = result.tagProvenance[result.tagProvenance.length - 1]!;
+    props.push({ name: "pattern-assigned", value: head.assigned, ns: MLASSURE_NS });
+    for (const rec of result.tagProvenance.slice(1)) {
+      props.push({
+        name: "pattern-migration",
+        value: `${rec.supersedes}→${rec.pattern}@${rec.assigned}`,
+        ns: MLASSURE_NS,
+      });
+    }
   }
 
   const finding: OscalFinding = {

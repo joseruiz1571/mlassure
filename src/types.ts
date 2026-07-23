@@ -77,6 +77,63 @@ export const JUDGMENT_CONFIDENCES: readonly Judgment["confidence"][] = [
   "low",
 ];
 
+/**
+ * One entry in a control's tag-provenance history (M3f) — an authority
+ * record for a pattern-vocabulary assignment: what was assigned, when,
+ * why, and (for migrations) what it superseded.
+ *
+ * `pattern` and `supersedes` are plain strings, not `AgentPattern`: a
+ * historical record may legitimately hold a pattern name that has since
+ * been retired from the registry, and typing it as `AgentPattern` would
+ * make that history unloadable forever. Registry membership is enforced
+ * only at the head of the history, which the loader requires to equal
+ * the control's live `pattern` field (itself registry-validated).
+ */
+export type TagProvenanceRecord = {
+  pattern: string;
+  /** YYYY-MM-DD date the tag was assigned. */
+  assigned: string;
+  /** Why this tag — required. An assignment without a why is not an authority record. */
+  rationale: string;
+  /**
+   * The pattern this record superseded. Absent on the origin record;
+   * required on every later record, where it must equal the previous
+   * record's `pattern` (the loader enforces the directional chain).
+   */
+  supersedes?: string;
+};
+
+/**
+ * Structural guard for provenance histories at the point of CONSUMPTION.
+ * The loader enforces these invariants at ingestion, but `ControlResult`
+ * is a plain type any producer can construct — a renderer that trusts
+ * loader invariants it cannot see would serialize literal "undefined"
+ * into an auditor-facing artifact (silent-failure-hunter, M3f). Both
+ * output renderers call this before rendering any provenance.
+ */
+export function assertProvenanceShape(
+  records: TagProvenanceRecord[],
+  controlId: string
+): void {
+  if (records.length === 0) {
+    throw new Error(
+      `Control "${controlId}": tagProvenance is an empty array — an empty history is corrupt data, not "no history"; refusing to render`
+    );
+  }
+  records.forEach((rec, i) => {
+    if (i === 0 && rec.supersedes !== undefined) {
+      throw new Error(
+        `Control "${controlId}": tagProvenance origin record carries "supersedes" (${rec.supersedes}) — structurally invalid history reached a renderer`
+      );
+    }
+    if (i > 0 && rec.supersedes === undefined) {
+      throw new Error(
+        `Control "${controlId}": tagProvenance migration record (${rec.pattern}@${rec.assigned}) has no "supersedes" — structurally invalid history reached a renderer`
+      );
+    }
+  });
+}
+
 export type ControlItem = {
   id: string;
   framework: string;
@@ -84,6 +141,13 @@ export type ControlItem = {
   intent: string;
   collectors: string[];
   note?: string;
+  /**
+   * Optional tag-provenance history, oldest first. Array order is
+   * authoritative for the migration chain; `assigned` dates must agree
+   * with it (non-decreasing). When present it must be non-empty and its
+   * head (last record) must match `pattern`.
+   */
+  tagProvenance?: TagProvenanceRecord[];
 };
 
 export type ControlSet = {

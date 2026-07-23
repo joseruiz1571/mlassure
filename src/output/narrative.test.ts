@@ -389,3 +389,110 @@ describe("toNarrativeMarkdown — confidence-as-coverage (M2c)", () => {
     expect(ac2Section).toContain("**Confidence (model self-reported):** high");
   });
 });
+
+describe("toNarrativeMarkdown — tag provenance (M3f)", () => {
+  function provenanceReport(
+    tagProvenance?: import("../types.js").TagProvenanceRecord[]
+  ): AssessmentReport {
+    return {
+      targetName: "prov-target",
+      endpointName: "prov-endpoint",
+      controlSetVersion: "test-1.0",
+      runAt: "2026-07-22T00:00:00.000Z",
+      results: [
+        {
+          controlId: "TEST-1",
+          pattern: "deterministic",
+          judgment: {
+            controlId: "TEST-1",
+            status: "satisfied",
+            confidence: "high",
+            rationale: "Check passed.",
+            evidenceCited: [],
+            gaps: [],
+          },
+          evidenceCount: 0,
+          iterations: 0,
+          citedEvidence: [],
+          evidenceCoverage: 1,
+          collectorsTagged: 0,
+          collectorsCalled: 0,
+          collectorsCited: 0,
+          coverageConfidence: "high",
+          ...(tagProvenance !== undefined ? { tagProvenance } : {}),
+        },
+      ],
+    };
+  }
+
+  it("renders the origin record in its own format — never `undefined →`", () => {
+    const md = toNarrativeMarkdown(
+      provenanceReport([
+        { pattern: "deterministic", assigned: "2026-06-10", rationale: "binary code check" },
+      ])
+    );
+    expect(md).toContain("### Tag provenance");
+    expect(md).toContain("- tagged `deterministic` (2026-06-10): binary code check");
+    expect(md).not.toContain("undefined");
+  });
+
+  it("renders a migration record as `from → to (date): rationale`", () => {
+    const md = toNarrativeMarkdown(
+      provenanceReport([
+        { pattern: "synthesis", assigned: "2026-06-10", rationale: "origin" },
+        {
+          pattern: "deterministic",
+          assigned: "2026-07-19",
+          supersedes: "synthesis",
+          rationale: "code check landed",
+        },
+      ])
+    );
+    expect(md).toContain(
+      "- `synthesis` → `deterministic` (2026-07-19): code check landed"
+    );
+    expect(md).toContain("- tagged `synthesis` (2026-06-10): origin");
+  });
+
+  it("renders no provenance content when the result has none (anti-fabrication)", () => {
+    const md = toNarrativeMarkdown(provenanceReport(undefined));
+    expect(md).not.toContain("Tag provenance");
+    expect(md).not.toContain("tagged `");
+  });
+
+  // ControlResult is a plain type — these shapes can never come from the
+  // loader, but a hand-built or future programmatic producer can construct
+  // them, and rendering them would emit "undefined" or a dangling header
+  // into an auditor-facing document (silent-failure-hunter, M3f).
+  it("throws on an EMPTY provenance array instead of rendering a dangling header", () => {
+    expect(() => toNarrativeMarkdown(provenanceReport([]))).toThrow(
+      /empty array — an empty history is corrupt data/
+    );
+  });
+
+  it("throws when a migration record lacks supersedes instead of rendering `undefined →`", () => {
+    expect(() =>
+      toNarrativeMarkdown(
+        provenanceReport([
+          { pattern: "synthesis", assigned: "2026-06-10", rationale: "origin" },
+          { pattern: "deterministic", assigned: "2026-07-19", rationale: "no supersedes" },
+        ])
+      )
+    ).toThrow(/has no "supersedes" — structurally invalid history/);
+  });
+
+  it("throws when the ORIGIN record carries supersedes instead of silently ignoring it", () => {
+    expect(() =>
+      toNarrativeMarkdown(
+        provenanceReport([
+          {
+            pattern: "deterministic",
+            assigned: "2026-06-10",
+            supersedes: "synthesis",
+            rationale: "contradictory origin",
+          },
+        ])
+      )
+    ).toThrow(/origin record carries "supersedes"/);
+  });
+});

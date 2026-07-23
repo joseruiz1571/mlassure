@@ -1,15 +1,15 @@
 ---
-task: mlassure M3e — Docker packaging (build/run verification DEFERRED, no Docker installed)
-slug: mlassure-m3e
-effort: E4
+task: mlassure M3f — tag provenance (versioned pattern tags, directional migration records)
+slug: mlassure-m3f
+effort: E2
 phase: complete
-progress: 34/34
+progress: 40/40
 mode: algorithm
-started: 2026-07-19T00:00:00Z
-updated: 2026-07-19T00:00:00Z
+started: 2026-07-22T00:00:00Z
+updated: 2026-07-22T23:00:00Z
 project: mlassure
 effort_source: classifier
-prior_phase_note: "M3a/b/c/d complete — see sections above."
+prior_phase_note: "M3a/b/c/d/e complete — see sections above."
 ---
 
 ## Problem
@@ -722,6 +722,8 @@ Deliver a working TypeScript project at `~/Desktop/GitHub/mlassure/` with a pass
 
 ## Changelog
 
+- 2026-07-22 (M3f): conjectured: pre-BUILD advisor rigor (five design decisions locked before code, including the explicit "origin-only fixture proves almost none of the invariants" test-design principle) plus per-invariant synthetic tests would leave delegation review little to find — the sixth slice testing whether front-loaded design review can substitute for post-build hunting. refuted by: the hunter found 8 real findings anyway, including two empirically-confirmed HIGHs where BOTH output renderers would emit literal `undefined` into auditor-facing artifacts on loader-bypassing input — and the sharpest instance: my own narrative doc comment named the exact `undefined →` failure, guarded it only at index 0, and my own regression test asserted `not.toContain("undefined")` for the origin case only, staying green while the migration-record variant of the same defect was live. The advisor call and the hunter caught disjoint gap classes AGAIN (design-level: origin format, historical-pattern registry trap; implementation-level: consumption-point guards, unknown-key discards) — sixth consecutive slice confirming the pattern. learned: (1) when a doc comment says "X can never happen," that sentence is a test specification — every variant of X it implies must have an assertion, not just the variant that prompted the comment; a guard plus a comment plus a partial test is precisely how a defect hides in green. (2) The recurring "outputs trust loader invariants on a plain type" category now has a named, reusable fix shape: an exported `assert<Thing>Shape()` guard at every consumption point, shared by all consumers so they can never disagree on invalid input (the narrative/OSCAL disagreement on the identical empty array — dangling header vs. silent normalization — is the tell that consumption-point validation is missing). criterion now: ISC-366..369 added and passing; the consumption-point-guard shape is the standing pattern for any future field added to ControlResult that carries loader-enforced invariants.
+
 ## M3 Features (M3e)
 
 | name | description | satisfies | depends_on | parallelizable |
@@ -794,6 +796,10 @@ Deliver a working TypeScript project at `~/Desktop/GitHub/mlassure/` with a pass
 
 ## Decisions
 
+- 2026-07-22 (M3f, silent-failure-hunter findings — 8 findings, all fixed in-session): the review's consolidated root cause is the fifth consecutive confirmation of this project's recurring category — **outputs trusting loader invariants on a plain type (`ControlResult`) that does not carry them**. Concretely: a hand-built or future programmatic provenance history bypassing `validateTagProvenance` would (1) serialize literal `"undefined→deterministic@date"` into the OSCAL compliance artifact, (2) render `` `undefined` → `x` `` in the auditor narrative — the exact failure my own doc comment claimed could never happen, guarded only at index 0, with my own `not.toContain("undefined")` test asserting the origin case only, green while the defect was live — (3) render a dangling `### Tag provenance` header on an empty array, and (4) silently normalize that same invalid empty array to "absent" in OSCAL, with the two renderers disagreeing on identical invalid input. Fix adopted per the hunter's consolidated recommendation: one exported `assertProvenanceShape()` guard in types.ts called at the top of both renderers' provenance paths, plus 5 renderer tests feeding each invalid shape. Three loader gaps also fixed: unknown keys now rejected (misspelled `superceded` on an origin record was silently discarding the author's recorded predecessor — for a feature whose premise is "an authority record that can be silently repaired is not an authority record," silently discarding authored fields is the same defect in a different coat); interior line breaks in rationale rejected (a `|` literal block would escape the narrative list structure); `→`/`@` rejected in pattern/supersedes (they delimit the OSCAL prop encoding — charset constraint on new data, not repair of old). I had independently found and fixed the folded-scalar trailing-newline issue mid-review (the hunter noted the concurrent edit and confirmed the fix's scoping as legitimate canonicalization). Hunter also verified sound: lexicographic date compare (safe — fixed-width zero-padded by regex before comparison), calendar-rollover rejection, per-record copy in the runner, and the fixture honesty test. Suite after all fixes: 150 pass, 357 expect(), typecheck clean.
+
+- 2026-07-22 (M3f, Rule 2 advisor call at PLAN→BUILD — the trigger point this ISA's own Decisions twice flagged as under-executed): advisor endorsed the seven-invariant design (kept the deliberately-redundant supersedes chain as a cheap copy-paste-error catch) and surfaced five decisions locked before code: **(1, correctness)** origin records get their own narrative format `tagged <pattern> (date)` — the migrations-only `from → to` format would have rendered `undefined → pattern` on the origin-only fixture, i.e. broken on exactly the one path real data exercises (ISC-348 refined). **(2, correctness)** historical record patterns are shape-checked only (non-empty string); registry membership is enforced solely at the head via the head==live coupling — otherwise a retired pattern name makes old history unloadable forever (ISC-335 refined; `TagProvenanceRecord.pattern` is typed `string`, not `AgentPattern`, for this reason). **(3)** empty `tagProvenance` array is a load error, not normalized-to-absent (ISC-342 unchanged, now deliberate). **(4)** `A → B → A` re-adoption is documented-legal, pinned by test (new ISC-364). **(5)** chronological ordering is non-decreasing, not strict — same-day migrations are real (M3a/M3d landed the same day); array order authoritative, dates must agree (ISC-340 refined; new ISC-365). Smaller adopted points: OSCAL migration props emitted in stable chronological order with from/to/date encoded in the value; loader stays fail-on-first for consistency with every existing validation error; ControlResult copy is a per-record object copy (not a shared mutable ref); fixture rationales cite the introducing commit SHA rather than inventing narrative — the no-fabricated-history discipline applies to the rationale field too. Advisor's recurring stale-auto-state flag (grc-week5 context) checked and dismissed — this session works against mlassure's real ISA.md directly. Advisor's sharpest framing, adopted as the test-design principle: "a green run on the origin-only fixture proves almost none of the seven invariants" — every invariant gets a synthetic-data test.
+
 - 2026-07-19 (M3e, code-reviewer finding — fixed): `.dockerignore`'s `*.test.ts` pattern uses Go `filepath.Match` semantics (Docker's ignore-file engine), which does NOT cross `/` — a bare `*.test.ts` only matches root-level files, and every test file in this repo is nested under `src/` (e.g. `src/agent/agent.test.ts`), so the line excluded ZERO files as originally written. Fixed to `**/*.test.ts`. Also corrected ISC-313's own reasoning, which had wrongly claimed `.dockerignore` "only matters for a `COPY . .` pattern" — silent-failure-hunter independently caught the same mechanical error: `.dockerignore` filters the build context before ANY `COPY` instruction sees it, so it's fully load-bearing for the explicit `COPY src ./src` target too, not just a broad copy. Two other code-reviewer notes accepted as documentation, not fixes: the `1.2-slim` tag is a floating minor tag, not truly "exact" reproducibility (byte-for-byte pinning would need a full patch version or `@sha256:` digest — left floating for the first real build, noted as a follow-up); base-image user/home assumptions were called "plausible but unverifiable" by code-reviewer, then independently CONFIRMED by silent-failure-hunter fetching the actual upstream source (see ISC-303 above) — the two reviews' findings on the same point diverged in confidence, and the more thorough one (with primary-source verification) is what's recorded.
 - 2026-07-19 (M3e, silent-failure-hunter findings — 1 real gap fixed, 2 DEFERRED-VERIFY items empirically closed, 1 minor UX fix applied): **(1, real gap, fixed)** if a user passes `--oscal`/`--narrative` output paths without the matching `-v` volume mount, the write succeeds inside the container (the path is real, `/out` is writable, the CLI's own try/catch around each write — `cli/index.ts:140-144,152-159` — sees no error), the CLI reports success truthfully, and then `docker run --rm` destroys the container's writable layer and the file vanishes with zero error, zero warning, zero diagnostic trail. This is exactly the "build succeeds, run succeeds, output silently doesn't exist" failure shape the delegation review is meant to catch. Fixed: added an explicit ⚠️ warning to the README's Docker section, directly under the real-target example, naming the exact failure mode and the fix (always pair `--oscal`/`--narrative` with a matching `-v` mount). **(2, DEFERRED-VERIFY items genuinely closed via local Bun, not Docker)**: silent-failure-hunter independently verified `bun install --frozen-lockfile --production` (installed only `@anthropic-ai/sdk`/`yaml` + transitive deps, correctly excluded `typescript`/`@types/bun`) and the ENTRYPOINT/CMD argument-forwarding shape, both using the locally-installed Bun 1.3.9 (Docker itself remains unavailable, but Bun IS installed on this machine, and both of these behaviors are Bun-level, not Docker-level, so they were genuinely testable without a container). I independently re-ran the production-install check myself in a fresh isolated directory against this repo's real `package.json`/`bun.lock` and got the identical result — confirmed twice, not trusted from one source. ISC-299/306/303 updated above to reflect real empirical confirmation rather than design-only status. **(3, minor UX fix, applied)** `AnthropicProvider`'s missing-key error message (`src/llm/anthropic-provider.ts`) only mentioned `.env`, which doesn't exist inside the container — not a silent failure (the error is already loud, caught, and exits 1 with a clear message), but confusing wording for a container operator. Fixed: message now also names `docker run -e ANTHROPIC_API_KEY` as an option. Full suite re-verified green after this small change: 99 pass, 255 expect(), unchanged from before.
 - 2026-07-19 (M3e, Cato/ISC-329, E4-mandatory): Cato's automated artifact-attachment tooling errored — this project's ISA lives at the project root (`<project>/ISA.md`, the v6.0.0+ project-ISA home per Algorithm doctrine) rather than `MEMORY/WORK/{slug}/`, and its detector doesn't handle the extension-less `Dockerfile`/dot-prefixed `.dockerignore` filenames. The agent began manually assembling the correct bundle to invoke codex directly, consistent with the "single-codex-invocation mandate," but the result returned before that recovery completed. Given this is the 3rd Cato attempt this project has made (M2c: explicit 401, no codex access; this session's earlier M3-series work didn't reach E4 so didn't trigger it until now) and the standing decision `codex-forge-not-available.md` already documents no OpenAI/codex key exists on this machine, the most likely underlying cause is the same standing limitation surfacing via a different failure path (tooling error before ever reaching the actual codex call) rather than a new, distinct problem. Verdict recorded as `skipped` (inconclusive due to tooling/environment issue), not `fail`/`concerns` — consistent with the M2c precedent, not a blocker. Not chasing further — the underlying root cause (no codex access) is already known and documented; a second recovery attempt would likely hit the same wall.
@@ -809,7 +815,115 @@ Deliver a working TypeScript project at `~/Desktop/GitHub/mlassure/` with a pass
 - 2026-06-25 (M2b session, Algorithm-doctrine self-critique, not project-scoped): conjectured: hardening `narrative.ts` against malformed judgment data (the silent-failure-hunter's findings) was sufficient without touching `agent.ts`'s unvalidated cast, since the cast was already-shipped M1 code outside this session's stated scope ("commit M2a, then move on to M2b"). refuted by: the Rule 2 advisor call, made only once at VERIFY (not at its first documented trigger point — after PLAN, before BUILD), pointed out that shipping renderer-side defense while knowingly leaving the actual silent-failure boundary unguarded was internally inconsistent with the run's own intent; the boundary fix turned out to be a small, well-scoped mechanism change, not the design-policy question I'd assumed made it out of scope. learned: (1) call the Rule 2 advisor at PLAN→BUILD, not only once retrospectively at VERIFY — it would likely have caught this before the symptom-side code was written, producing one pass instead of two; (2) "this touches already-shipped code" is not by itself sufficient reason to defer a fix — the test is whether the change alters behavior for any currently-valid input (it doesn't here) or only for already-broken ones. Separately and non-project-specific: this run also selected FirstPrinciples, SystemsThinking, and ContextSearch as thinking capabilities but only applied FirstPrinciples/SystemsThinking as inline reasoning, never invoking their Skill tool (ContextSearch was eventually invoked for real, but only at VERIFY instead of OBSERVE) — a v6.3.0 doctrine violation (text-only capability claims are a CRITICAL FAILURE per the Algorithm spec) that the thinking floor survived only because Advisor + ReReadCheck + FeedbackMemoryConsult + ISA + ContextSearch (5) independently cleared E3's floor of 4. criterion now: no ISC changed (this is process learning, not a project criterion) — logged here per the Learning Router as a self-correction for future Algorithm runs, not a doctrine-file patch, since v6.3.0 already states both rules correctly; the gap was execution fidelity, not missing doctrine.
 - 2026-06-25 (M2c, repeated process learning): conjectured: a single VERIFY-phase advisor call, after BUILD, would be sufficient to catch design gaps in the confidence-as-coverage formula. refuted by: the advisor's first call raised a concern (denominator shrinking on not-attempted) that turned out to be a misread of the already-implemented design, but re-deriving its underlying intent myself (rather than trusting its exact framing) surfaced a REAL, different bug — `isKnownCollector()` checking a global executor map instead of `control.collectors` — that a pre-BUILD advisor call would likely have caught before any code was written, in one pass. The subsequent delegation review (code-reviewer + silent-failure-hunter) then found three MORE real gaps (duplicate-collector denominator, an unconsumed-and-undocumented field, a fail-loud gap in the bucketing function, a silently-unlogged duplicate-evidence-id error) that neither I nor the advisor caught across two advisor calls. learned: (1) this is the second consecutive milestone today where deferring the advisor call to VERIFY-only cost an extra fix-and-reverify cycle — the doctrine's "call before BUILD begins" trigger point is being under-executed as a pattern, not a one-off; (2) when an advisor's reasoning doesn't match my own description of the code, re-derive the underlying concern myself against the actual implementation rather than accepting or dismissing the literal framing — the real bug was adjacent to what it said, not what it said; (3) the multi-reviewer process (advisor + code-reviewer + silent-failure-hunter) caught materially different, non-overlapping bug classes each — none would have caught all of them alone, validating the E4 delegation floor as substantive rather than ceremonial. criterion now: no ISC changed (process learning) — same disposition as the M2b entry above: a recurring execution-fidelity gap against existing doctrine, not a new doctrine patch.
 
+## M3 Features (M3f)
+
+| name | description | satisfies | depends_on | parallelizable |
+|------|-------------|-----------|------------|----------------|
+| provenance-types | `TagProvenanceRecord` type + optional `ControlItem.tagProvenance` | ISC-330,331,332 | none | no |
+| loader-validation | fail-loud provenance validation in `control-loader.ts` (7 invariants) | ISC-333..343,354 | provenance-types | no |
+| fixture-provenance | real-history origin records for all 8 controls in `nist-subset.yaml` | ISC-344,345,346 | loader-validation | no |
+| output-threading | `ControlResult.tagProvenance` + narrative + OSCAL additive rendering | ISC-347..353,356 | provenance-types | no |
+| provenance-tests | loader + output test coverage, full suite green | ISC-355,357,358,359,360 | all above | no |
+| readme-ledger | README ledger + status table M3f entries | ISC-361,362 | all above | no |
+| delegation-review | silent-failure-hunter on changed files | ISC-363 | all above | no |
+
+## M3 Criteria (M3f — tag provenance: versioned pattern tags with directional migration records)
+
+The pattern tag on a control is a vocabulary assignment. M3f makes each assignment an authority record: who-knows-when it was assigned, what it superseded, and why — directional migration records in the control YAML, validated fail-loud by the loader, disclosed additively in both output surfaces. Fixture provenance is REAL (reconstructed from this repo's git history, origin records only — the tags have never actually migrated); migration mechanics are exercised in tests with clearly-synthetic control sets, never fabricated history.
+
+**Types**
+- [x] ISC-330: `src/types.ts` exports `TagProvenanceRecord` with fields pattern, assigned, rationale, and optional supersedes
+- [x] ISC-331: `ControlItem` has an optional `tagProvenance?: TagProvenanceRecord[]` field
+- [x] ISC-332: `bun run typecheck` exits 0 after all M3f changes
+
+**Loader validation (fail-loud, seven invariants)**
+- [x] ISC-333: a control without `tagProvenance` loads unchanged — all pre-M3f loader tests still pass
+- [x] ISC-334: a valid `tagProvenance` array parses into typed records on the returned `ControlItem`
+- [x] ISC-335: loader throws when a record's `pattern` is not a non-empty string (shape check only for historical records — registry membership is enforced solely at the head via ISC-341, so retired pattern names in old records stay loadable forever)
+- [x] ISC-336: loader throws when a record's `assigned` is not a YYYY-MM-DD date
+- [x] ISC-337: loader throws when a record's `rationale` is missing or empty
+- [x] ISC-338: loader throws when the FIRST record carries `supersedes` (origin records have no predecessor)
+- [x] ISC-339: loader throws when record N's `supersedes` does not equal record N-1's `pattern` (broken directional chain)
+- [x] ISC-340: loader throws when records are not in non-decreasing chronological order by `assigned` (same-day migrations are legal — M3a and M3d landed the same day in this repo; array order is authoritative for the chain, dates must agree with it)
+- [x] ISC-341: loader throws when the LAST record's `pattern` differs from the control's live `pattern` field (head-of-history drift)
+- [x] ISC-342: loader throws when `tagProvenance` is present but an empty array
+- [x] ISC-343: every provenance error message names the offending control's id
+
+**Fixture (real history only)**
+- [x] ISC-344: all 8 controls in `nist-subset.yaml` carry a `tagProvenance` origin record
+- [x] ISC-345: origin dates match real git history — 2026-06-10 (M0 commit `9b00bbf`) for the original five, 2026-07-19 (M3a commit `cffefdc`) for SC-7/RA-3/CA-7 — and each rationale cites its introducing commit SHA (advisor: don't let rationale become where fabrication sneaks back in)
+- [x] ISC-346: the fixture contains zero `supersedes` entries — no fabricated migrations
+
+**Output threading (additive only)**
+- [x] ISC-347: `ControlResult` carries optional `tagProvenance` populated from the control by the runner
+- [x] ISC-348: narrative renders the origin record as `tagged <pattern> (date): rationale` — origin has no `from`, so it gets its own format, never `undefined → pattern` (advisor gap #1: the origin-only fixture exercises exactly the path a migrations-only format would ship broken)
+- [x] ISC-349: narrative renders each migration record as `<from> → <to> (date): rationale`
+- [x] ISC-350: narrative renders no provenance content for controls without `tagProvenance` (no empty-section noise)
+- [x] ISC-351: OSCAL finding carries an additive `pattern-assigned` prop when provenance exists
+- [x] ISC-352: OSCAL finding carries one `pattern-migration` prop per migration record
+- [x] ISC-353: OSCAL output for a provenance-free control set contains no new props (byte-additive change)
+
+**Anti-criteria**
+- [x] ISC-354: Anti: the loader never silently drops, defaults, or repairs an invalid provenance record — every invalid shape throws
+- [x] ISC-355: Anti: no new runtime dependency added
+- [x] ISC-356: Anti: narrative/OSCAL never render provenance data not present in the loaded control set
+
+**Tests + integrity**
+- [x] ISC-357: loader test cases cover every throw path (ISC-335..342) plus the valid-parse path
+- [x] ISC-358: output-layer tests cover narrative and OSCAL provenance rendering, including a synthetic migration record
+- [x] ISC-359: `bun test` exits 0 with passing-test count > 99 baseline
+- [x] ISC-360: `bun run dev -- assess --controls fixtures/controls/nist-subset.yaml --target fixtures/targets/model-clean.json` exits 0 with 8 control rows (regression)
+
+**Advisor-driven additions (2026-07-22)**
+- [x] ISC-364: a synthetic `A → B → A` re-adoption chain loads successfully — re-adoption is documented-legal (a tag can return after a failed migration; authority records permit this), pinned by test not left unspecified
+- [x] ISC-365: two consecutive records with the same `assigned` date load successfully (non-decreasing, not strict)
+
+**README**
+- [x] ISC-361: README Implementation Ledger moves Tag provenance from Designed to Implemented (M3f), naming the origin-records-only honesty decision
+- [x] ISC-362: README status table adds an M3f row
+
+**Delegation review**
+- [x] ISC-363: silent-failure-hunter review of new/changed files invoked, findings recorded in `## Decisions`
+
+**Hunter-driven additions (2026-07-22, all findings fixed in-session)**
+- [x] ISC-366: shared `assertProvenanceShape()` exported from types.ts and called by BOTH renderers before any provenance rendering — empty array, supersedes-on-origin, and missing-supersedes-on-migration each throw in both narrative and OSCAL (pinned by 5 renderer tests)
+- [x] ISC-367: loader rejects unknown keys on provenance records (a misspelled `superceded` on an origin record no longer silently discards the author's recorded predecessor)
+- [x] ISC-368: loader rejects interior line breaks in rationale (a `|` literal block would escape the narrative list-item structure)
+- [x] ISC-369: loader rejects `→` and `@` in pattern/supersedes — the OSCAL migration-prop delimiters stay parseable for machine consumers
+
+## Test Strategy (M3f additions)
+
+| isc | type | check | threshold | tool |
+|-----|------|-------|-----------|------|
+| ISC-330,331 | grep | TagProvenanceRecord + tagProvenance in types.ts | both present | Grep |
+| ISC-332 | command | `bun run typecheck` exit code | 0 | Bash |
+| ISC-333–343 | command | `bun test` loader provenance cases | all pass | Bash |
+| ISC-344–346 | read/grep | nist-subset.yaml provenance blocks | 8 origin records, 0 supersedes | Read, Grep |
+| ISC-347–353 | command | `bun test` output provenance cases | all pass | Bash |
+| ISC-354–356 | command | `bun test` anti-criteria assertions | all pass | Bash |
+| ISC-357–359 | command | `bun test` full suite | exit 0, count > 99 | Bash |
+| ISC-360 | command | live CLI regression run | exit 0, 8 rows | Bash |
+| ISC-361,362 | read | README ledger + status table | M3f entries present | Read |
+| ISC-363 | agent | silent-failure-hunter | findings recorded | Agent |
+
 ## Verification
+
+- ISC-330/331 (M3f): `Edit` of src/types.ts confirmed — `TagProvenanceRecord` exported (pattern/assigned/rationale/supersedes?, pattern typed `string` per advisor decision #2), `ControlItem.tagProvenance?` present; typecheck green.
+- ISC-332 (M3f): `bun run typecheck` → `tsc --noEmit` exit 0 after all M3f changes (run three times across the build).
+- ISC-333–343, ISC-364/365 (M3f): `bun test` — new `src/loaders/control-loader.test.ts` covers the valid-parse paths (origin-only, migration chain, A→B→A re-adoption, same-day, retired-historical-pattern, folded-scalar trim) and all eleven throw paths, each asserted twice (message regex + control-id presence). Full suite: 137 pass, 0 fail, 344 expect().
+- ISC-344/345/346 (M3f): fixture test asserts all 8 controls carry exactly one origin record, zero `supersedes`, dates ∈ {2026-06-10, 2026-07-19}, rationale cites 9b00bbf/cffefdc; independently confirmed via direct `bun -e` load ("all 8 have provenance: true").
+- ISC-347 (M3f): `bun test` — new runner tests thread a 2-record history through `runAssessment` via the LLM-free attestation bypass: deep-equal copy asserted AND ref-inequality asserted (per-record copy, advisor smaller-point); absent-provenance case asserts `undefined`.
+- ISC-348/349/350 (M3f): `bun test` — narrative tests pin `- tagged \`deterministic\` (2026-06-10): ...` origin format with explicit `not.toContain("undefined")`, the migration format `` `synthesis` → `deterministic` (2026-07-19) ``, and zero provenance content when absent.
+- ISC-351/352/353 (M3f): `bun test` — OSCAL tests pin `pattern-assigned` = head date, chronological `pattern-migration` values (`sufficiency→correlation@2026-02-01`, `correlation→synthesis@2026-03-01`), ns = MLASSURE_NS, and ZERO provenance props for every finding when no result carries provenance.
+- ISC-354 (M3f): every invalid shape in the loader throws — pinned by the eleven throw-path tests; no drop/default/repair path exists in `validateTagProvenance` (rationale trim is whitespace canonicalization of the YAML folded-scalar artifact, documented in code, content never repaired).
+- ISC-355 (M3f): no dependency changes — `package.json`/`bun.lock` untouched in `git status`.
+- ISC-356 (M3f): narrative renders only from `result.tagProvenance` (renderTagProvenance returns null when undefined); OSCAL props emitted only when `result.tagProvenance` present — both pinned by absence tests.
+- ISC-357/358/359 (M3f): `bun test` exit 0, 137 pass (> 99 baseline by 38), across 9 files including the new loader test file.
+- ISC-360 (M3f): live CLI run `bun run dev -- assess --controls fixtures/controls/nist-subset.yaml --target fixtures/targets/model-clean.json` → exit 0, "Controls: 8 loaded", all 8 rows printed.
+- ISC-363 (M3f): silent-failure-hunter invoked on the full M3f diff — returned 8 real findings (2 HIGH confirmed empirically: `undefined` serialization into both output surfaces), all fixed in-session; full disposition in Decisions.
+- ISC-366 (M3f): `bun test` — 5 new renderer tests pin throws for empty-array, missing-supersedes, and supersedes-on-origin in narrative (3) and OSCAL (2); `Grep`-confirmed both renderers call `assertProvenanceShape` before rendering.
+- ISC-367/368/369 (M3f): `bun test` — 4 new loader throw-path tests (unknown key incl. misspelled `superceded`, `|` literal-block rationale, `→` in pattern, `@` in supersedes), each also asserting the control id in the message. Final suite: 150 pass, 0 fail, 357 expect(), typecheck exit 0.
+- ISC-361/362 (M3f): `Edit` of README.md confirmed — ledger entry "Implemented (M3f, 2026-07-22)" naming the origin-records-only decision, status table row "M3f: tag provenance ... Shipped, unit-verified (2026-07-22)", remaining-M3 row reduced to custody chain.
 
 - ISC-323–326 (M3e): `Read` of README.md confirms the Docker quick-start section present with build/run commands, output-mount pattern, bare `-e ANTHROPIC_API_KEY` form, permission escape hatch, AND the post-review ephemeral-output-without-mount warning.
 - ISC-327–329 (M3e): code-reviewer + silent-failure-hunter both invoked and returned real, actionable findings (`.dockerignore` glob bug, ephemeral-output data-loss trap) — both fixed. Cato attempted, tooling error consistent with the standing no-codex-access limitation, skipped not failed — full disposition in Decisions.

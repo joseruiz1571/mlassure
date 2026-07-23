@@ -1,4 +1,10 @@
-import type { ControlSet, AssessmentTarget, Judgment, AgentPattern } from "../types.js";
+import type {
+  ControlSet,
+  AssessmentTarget,
+  Judgment,
+  AgentPattern,
+  TagProvenanceRecord,
+} from "../types.js";
 import type { AwsProvider } from "../providers/aws-provider.interface.js";
 import type { LlmProvider } from "../llm/llm-provider.interface.js";
 import { assessControl, MissingDeterministicChecksError } from "../agent/agent.js";
@@ -55,6 +61,13 @@ export type ControlResult = {
   collectorsCited: number;
   /** Deterministic bucket derived from evidenceCoverage — never the model's self-report. */
   coverageConfidence: Judgment["confidence"];
+  /**
+   * The control's tag-provenance history (M3f), copied per-record at
+   * construction so downstream consumers never share mutable record refs
+   * with the loaded ControlSet. Present only when the control YAML
+   * recorded provenance — outputs are strictly additive on this field.
+   */
+  tagProvenance?: TagProvenanceRecord[];
 };
 
 /**
@@ -146,6 +159,9 @@ export async function runAssessment(
       collectorsCalled,
       collectorsCited,
       coverageConfidence: deriveCoverageConfidence(evidenceCoverage, collectorsTagged),
+      ...(control.tagProvenance !== undefined
+        ? { tagProvenance: control.tagProvenance.map((r) => ({ ...r })) }
+        : {}),
     });
   }
 

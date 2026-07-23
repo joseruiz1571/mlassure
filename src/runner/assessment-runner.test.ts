@@ -487,3 +487,58 @@ describe("runAssessment — deterministic-check preflight (M3d, advisor-mandated
     expect(report.results[0]!.pattern).toBe("deterministic");
   });
 });
+
+describe("runAssessment — tag provenance threading (M3f)", () => {
+  const bypassLlm: LlmProvider = {
+    async complete(): Promise<LlmCompletionResult> {
+      throw new Error("LLM must not be called for an attestation-pattern control");
+    },
+  };
+
+  it("copies tagProvenance onto ControlResult per-record, never sharing refs with the ControlSet", async () => {
+    const control: ControlItem = {
+      id: "PROV-1",
+      framework: "SP 800-53",
+      pattern: "attestation",
+      intent: "Provenance threading case.",
+      collectors: [],
+      tagProvenance: [
+        { pattern: "synthesis", assigned: "2026-01-01", rationale: "origin" },
+        {
+          pattern: "attestation",
+          assigned: "2026-02-01",
+          supersedes: "synthesis",
+          rationale: "migrated",
+        },
+      ],
+    };
+
+    const report = await runAssessment(
+      controlSetOf(control),
+      MOCK_TARGET,
+      makeProvider(),
+      bypassLlm
+    );
+    const result = report.results[0]!;
+    expect(result.tagProvenance).toEqual(control.tagProvenance!);
+    expect(result.tagProvenance![0]).not.toBe(control.tagProvenance![0]);
+  });
+
+  it("omits tagProvenance on ControlResult when the control records none", async () => {
+    const control: ControlItem = {
+      id: "PROV-2",
+      framework: "SP 800-53",
+      pattern: "attestation",
+      intent: "No provenance case.",
+      collectors: [],
+    };
+
+    const report = await runAssessment(
+      controlSetOf(control),
+      MOCK_TARGET,
+      makeProvider(),
+      bypassLlm
+    );
+    expect(report.results[0]!.tagProvenance).toBeUndefined();
+  });
+});

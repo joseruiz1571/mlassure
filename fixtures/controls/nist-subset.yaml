@@ -4,6 +4,11 @@ controls:
   - id: "SI-6(1)"
     framework: "SP 800-53 Rev 5 / COSAiS AI Overlay"
     pattern: synthesis
+    tagProvenance:
+      - pattern: synthesis
+        assigned: "2026-06-10"
+        rationale: >
+          Tagged at authoring: monitoring conformance requires synthesizing data-capture, schedule, and registry evidence across three collectors — LLM judgment, not a lookup. (introducing commit 9b00bbf)
     intent: >
       The deployed model is monitored for performance degradation in production.
       Monitoring must be active (data capture enabled), scheduled (model quality monitor),
@@ -16,6 +21,11 @@ controls:
   - id: "AC-6(9)"
     framework: "SP 800-53 Rev 5"
     pattern: sufficiency
+    tagProvenance:
+      - pattern: sufficiency
+        assigned: "2026-06-10"
+        rationale: >
+          Tagged at authoring: least-privilege is a sufficiency judgment over a single role document — is this evidence enough to conclude minimal permissions. (introducing commit 9b00bbf)
     intent: >
       The model endpoint execution role grants only the permissions required for
       inference. Role must not hold training-bucket writes, cross-account S3 access,
@@ -26,6 +36,11 @@ controls:
   - id: "AU-12(3)"
     framework: "SP 800-53 Rev 5"
     pattern: correlation
+    tagProvenance:
+      - pattern: correlation
+        assigned: "2026-06-10"
+        rationale: >
+          Tagged at authoring: approval-precedes-deployment is a temporal correlation across CloudTrail events and registry state. (introducing commit 9b00bbf)
     intent: >
       Changes to the model endpoint are preceded by a registry approval event.
       The UpdateEndpoint or CreateEndpoint CloudTrail event must occur after
@@ -37,6 +52,11 @@ controls:
   - id: "SC-28"
     framework: "SP 800-53 Rev 5"
     pattern: deterministic
+    tagProvenance:
+      - pattern: deterministic
+        assigned: "2026-06-10"
+        rationale: >
+          Tagged at authoring: customer-managed-vs-AWS-managed key is a binary code check, no judgment required. The LLM-bypass mechanics enforcing this tag landed later (M3d, commit 93c5ffc); the tag itself never changed. (introducing commit 9b00bbf)
     intent: >
       Model artifacts and endpoint volumes are encrypted at rest using
       customer-managed KMS keys (not AWS-managed keys).
@@ -46,6 +66,11 @@ controls:
   - id: "SA-10"
     framework: "SP 800-53 Rev 5"
     pattern: attestation
+    tagProvenance:
+      - pattern: attestation
+        assigned: "2026-06-10"
+        rationale: >
+          Tagged at authoring: named-reviewer sign-off is not machine-retrievable from AWS — human attestation by definition. (introducing commit 9b00bbf)
     intent: >
       Model changes undergo documented human review including sign-off from
       a named reviewer before deployment. This evidence is not machine-retrievable
@@ -56,6 +81,11 @@ controls:
   - id: "SC-7"
     framework: "SP 800-53 Rev 5"
     pattern: deterministic
+    tagProvenance:
+      - pattern: deterministic
+        assigned: "2026-07-19"
+        rationale: >
+          Tagged at authoring: three required network conditions, all-or-nothing — a binary code check with no partial credit. (introducing commit cffefdc)
     intent: >
       The model endpoint runs inside network isolation with a VPC and at least
       one security group attached. This is a binary check with exactly three
@@ -68,6 +98,11 @@ controls:
   - id: "RA-3"
     framework: "SP 800-53 Rev 5"
     pattern: synthesis
+    tagProvenance:
+      - pattern: synthesis
+        assigned: "2026-07-19"
+        rationale: >
+          Tagged at authoring: risk-rating conformance requires synthesizing the model card rating against declared intended uses and evaluation details. (introducing commit cffefdc)
     intent: >
       A documented risk assessment exists for the model, synthesizing the model
       card's stated risk rating against its declared intended uses and limitations,
@@ -81,6 +116,11 @@ controls:
   - id: "CA-7"
     framework: "SP 800-53 Rev 5"
     pattern: sufficiency
+    tagProvenance:
+      - pattern: sufficiency
+        assigned: "2026-07-19"
+        rationale: >
+          Tagged at authoring: monitors-actually-executing is a sufficiency judgment over schedule-execution evidence. (introducing commit cffefdc)
     intent: >
       Every monitoring schedule configured for this endpoint is actually executing
       successfully — not merely configured. A monitor whose most recent run failed

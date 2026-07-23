@@ -13,7 +13,11 @@
 
 import type { AssessmentReport, ControlResult } from "../runner/assessment-runner.js";
 import type { ControlSet, Judgment } from "../types.js";
-import { isCodeDetermined, usesAttestationCallout } from "../types.js";
+import {
+  isCodeDetermined,
+  usesAttestationCallout,
+  assertProvenanceShape,
+} from "../types.js";
 
 const STATUS_LABEL: Record<Judgment["status"], string> = {
   satisfied: "Satisfied",
@@ -119,6 +123,30 @@ function renderAttestationCallout(result: ControlResult): string | null {
   );
 }
 
+/**
+ * Tag provenance (M3f): renders the pattern tag's authority-record history.
+ * The origin record has no `supersedes`, so it gets its own format
+ * (`tagged <pattern> (date)`) — running it through the migration format
+ * would render `undefined → pattern`. Rendered only from
+ * `result.tagProvenance` — never inferred, never defaulted — so the
+ * narrative can never describe tag history the control set doesn't record.
+ */
+function renderTagProvenance(result: ControlResult): string | null {
+  const history = result.tagProvenance;
+  if (history === undefined) return null;
+  // undefined means legitimately absent; anything PRESENT must be
+  // structurally valid — an empty array or a broken supersedes chain here
+  // means loader invariants were bypassed, and rendering it would emit
+  // "undefined" or a dangling header into an auditor-facing document.
+  assertProvenanceShape(history, result.controlId);
+  const lines = history.map((rec, i) =>
+    i === 0
+      ? `- tagged \`${rec.pattern}\` (${rec.assigned}): ${rec.rationale}`
+      : `- \`${rec.supersedes}\` → \`${rec.pattern}\` (${rec.assigned}): ${rec.rationale}`
+  );
+  return `### Tag provenance\n\n${lines.join("\n")}`;
+}
+
 /** Heading format `## <controlId>: <icon> <label>` is deliberate: the colon distinguishes a control heading from the `## Summary` heading for any consumer counting per-control sections. */
 function renderControlSection(result: ControlResult): string {
   const j = result.judgment;
@@ -139,6 +167,7 @@ function renderControlSection(result: ControlResult): string {
     `**Confidence (evidence coverage):** ${result.coverageConfidence}\n**Confidence (${isCodeDetermined(result.pattern) ? `code-determined (${result.pattern} pattern)` : "model self-reported"}):** ${j.confidence}`,
     rationale,
     `### Evidence\n\n${renderEvidence(result)}`,
+    renderTagProvenance(result),
     renderGaps(j),
     renderAttestationCallout(result),
   ].filter((block): block is string => block !== null);

@@ -183,9 +183,12 @@ CLI (assess command)
 
 - **Docker packaging** — multi-stage `Dockerfile` (`deps` → `runtime`, both pinned to the same `oven/bun:1.2-slim` tag), non-root (`bun` user, uid 1000, reused from the base image), `ANTHROPIC_API_KEY` injected only via `docker run -e` (never a build `ARG`, never baked in — confirmed via grep, and fixtures independently confirmed clean of any real key before being baked into the image). No Docker install existed on the machine that wrote this, so `docker build`/`docker run` are `[DEFERRED-VERIFY]` — see `ISA.md` `## Verification` for the exact command checklist (`TODO-m3e-docker-build-verify`). Several design claims WERE empirically confirmed without Docker, using the locally-installed Bun directly: `bun install --frozen-lockfile --production` correctly excludes dev dependencies (verified twice, independently), and the `ENTRYPOINT`/`CMD` argument-forwarding shape matches `docker run <image> assess ...`'s intended invocation. The base image's `bun` user/home assumptions were confirmed by reading `oven/bun`'s actual upstream Dockerfile source, not assumed. Delegation review found and fixed a real data-loss trap: `--oscal`/`--narrative` output paths passed without a matching `-v` volume mount write successfully inside the container, report success truthfully, then vanish silently when `--rm` destroys the container — now loudly documented in the Docker quick-start.
 
+**Implemented (M3f, 2026-07-22)**
+
+- **Tag provenance** — each control's pattern tag can now carry an authority record: an optional `tagProvenance` array of directional migration records (`pattern`, `assigned` date, required `rationale`, and `supersedes` naming the previous pattern). The loader validates seven invariants fail-loud — origin records carry no `supersedes`, every later record's `supersedes` must equal its predecessor's pattern (a deliberately redundant chain-integrity check), dates must be non-decreasing (same-day migrations are legal), and the history head must equal the control's live `pattern` field, so tag and history can never silently drift apart. Historical records are shape-checked only — a retired pattern name in an old record stays loadable forever; registry membership is enforced solely at the head. Both output surfaces disclose provenance additively: the narrative renders a per-control "Tag provenance" list (`tagged <pattern> (date)` for the origin, `<from> → <to> (date): rationale` for migrations) and OSCAL findings gain `pattern-assigned` and per-migration `pattern-migration` props — with zero new props when a control set records no provenance. **The fixture's provenance is real, and deliberately boring:** all 8 controls carry origin records only, with dates and SHAs reconstructed from this repo's actual git history (`9b00bbf` 2026-06-10, `cffefdc` 2026-07-19) — no tag in this repo has ever migrated, so no migration is recorded. A provenance feature that shipped with fabricated history would violate the same invariant the citation guard enforces for evidence; migration mechanics are pinned by synthetic-data tests instead (including the documented-legal `A → B → A` re-adoption chain).
+
 **Designed**
 
-- **Tag provenance** — tags are static in the current control YAML; versioning with directional migration records is a later M3 slice and the subject of Essay 4
 - **Live AWS read-only provider** — M4
 
 ---
@@ -221,7 +224,8 @@ M3a added SC-7, RA-3, and CA-7 by reusing existing collectors and patterns — z
 | M3c: output-layer pattern/provenance awareness | Shipped, unit-verified (2026-07-19) |
 | M3d: deterministic-pattern LLM bypass (SC-28, SC-7) | Shipped, live-verified (2026-07-19) |
 | M3e: Docker packaging | Designed + statically verified, build/run DEFERRED (2026-07-19) |
-| M3 (remaining): custody chain, tag provenance | Planned |
+| M3f: tag provenance (directional migration records, authority-controlled) | Shipped, unit-verified (2026-07-22) |
+| M3 (remaining): custody chain | Planned |
 | M4: live AWS read-only provider | Planned |
 
 ---
