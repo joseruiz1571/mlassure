@@ -47,7 +47,7 @@ bun run dev -- assess \
 
 ## Docker
 
-> **Status: designed, statically verified, build/run NOT yet tested** — Docker wasn't installed on the machine that wrote this Dockerfile. Every claim below is a design intent, not a confirmed result. See `ISA.md` `## Verification` for the exact command sequence to run when Docker is available, and `TODO-m3e-docker-build-verify`.
+> **Status: build/run verified live (2026-07-23, Docker 29.6.2)** — `TODO-m3e-docker-build-verify` closed. The image builds clean, runs non-root (`uid=1000(bun)`), bakes in no key material (history + env scans clean), forwards arguments correctly, and completed a full live agent-loop assessment in-container with outputs written host-owned through a volume mount. The container-produced OSCAL document validates against the official 1.1.2 schema. Verification transcript in `ISA.md` `## Verification`.
 
 ```bash
 docker build -t mlassure .
@@ -272,7 +272,7 @@ M3a added SC-7, RA-3, and CA-7 by reusing existing collectors and patterns — z
 | M3b: attestation-pattern LLM bypass | Shipped, unit-verified (2026-07-19) |
 | M3c: output-layer pattern/provenance awareness | Shipped, unit-verified (2026-07-19) |
 | M3d: deterministic-pattern LLM bypass (SC-28, SC-7) | Shipped, live-verified (2026-07-19) |
-| M3e: Docker packaging | Designed + statically verified, build/run DEFERRED (2026-07-19) |
+| M3e: Docker packaging | Shipped, live-verified (2026-07-23) |
 | M3f: tag provenance (directional migration records, authority-controlled) | Shipped, unit-verified (2026-07-22) |
 | M3g: custody chain (evidence bundle, verify-bundle, Cosign signing) | Shipped, live-verified (2026-07-22) |
 | M4: live AWS read-only provider | Planned |
