@@ -28,6 +28,8 @@ bun install
 # Add your Anthropic API key
 cp .env.example .env
 # edit .env: ANTHROPIC_API_KEY=sk-ant-...
+# optional:  MLASSURE_MODEL=claude-sonnet-4-6   (override the default model)
+# optional:  ANTHROPIC_WORKSPACE_ID=wrkspc_...  (identity-linked / multi-workspace keys only)
 
 # Run against fixtures — two models, opposite verdicts
 bun run dev -- assess \
@@ -41,7 +43,22 @@ bun run dev -- assess \
   --live
 ```
 
-**Requires:** [Bun](https://bun.sh) v1.0+, an Anthropic API key (Claude Sonnet 4).
+**Requires:** [Bun](https://bun.sh) v1.0+, an Anthropic API key. The model is settable (`--model` or `MLASSURE_MODEL`; default `claude-sonnet-4-6`).
+
+### Reproducibility flags (0.4.0)
+
+```bash
+bun run dev -- assess \
+  --controls fixtures/controls/nist-subset.yaml \
+  --target fixtures/targets/model-clean.json \
+  --live \
+  --report out/report.json \  # AssessmentReport JSON (same object as bundle report.json)
+  --model claude-sonnet-4-6 \ # LLM alias for this run (default: MLASSURE_MODEL or claude-sonnet-4-6)
+  --temperature 0 \           # [0, 1]; 0 is valid and not swallowed (default: 0.1)
+  --repeat 3                  # run N times; output paths get a -rNN suffix when N > 1
+```
+
+Every report now records what produced it: the model alias requested, the dated snapshot ID Anthropic actually served, the configured temperature, per-run token usage, the replica index under `--repeat`, and each control's exact intent text as given to the agent. A verdict you can't reproduce is a verdict you can't defend; these fields are what a second run needs to be a fair comparison.
 
 ---
 
@@ -236,6 +253,10 @@ CLI (assess command)
 
 - **Custody chain and evidence retention** — the [cgep-capstone](https://github.com/joseruiz1571/cgep-capstone) custody pattern integrated into mlassure's own shape (a local CLI, not a CI pipeline): `assess --bundle <dir>` emits a tamper-evident bundle (full retrieved evidence with payloads cited-or-not, the run's outputs, and a manifest with per-file sha256 + a canonical root hash over NFC-normalized sorted path/hash pairs, written manifest-last); `verify-bundle` re-verifies everything fail-loud — bit-flips, missing files, **extra** files, symlinks, and manifest/rootHash inconsistency all exit 1 naming the violation, with exactly the Cosign signature artifacts exempt from extra-file detection. Signing chain proven empirically with an ephemeral key (good sig verifies; tampered manifest and wrong-key verification both fail); keyless OIDC documented for future CI. See [Custody chain](#custody-chain) for the four properties, their mechanisms, and what the signature deliberately does NOT claim to prove.
 
+**Implemented (0.4.0, 2026-08-30)**
+
+- **Reproducibility and run metadata** — assessments now record their own provenance, motivated by the control-wording variance study (whose runs needed fair cross-run comparison). `AssessmentReport` gains `llmModel`, `llmTemperature`, and `replica`; each `ControlResult` carries `controlIntent`, the exact control wording the agent was given (`src/runner/assessment-runner.ts`). The provider captures what Anthropic actually served — dated snapshot ID and per-call token usage — rather than only what was requested (`src/llm/anthropic-provider.ts`). New CLI flags: `--report` (AssessmentReport JSON to a path), `--model`, `--temperature` (0 is valid, guarded against `??`/falsy swallowing), and `--repeat N` (replicas with `-rNN` output suffixes). `MLASSURE_MODEL`, documented in `.env.example` since M1 but previously unread, is now honored; `ANTHROPIC_WORKSPACE_ID` optionally sets the `anthropic-workspace-id` header for identity-linked keys. Provider config covered by new unit tests (`src/llm/anthropic-provider.test.ts`).
+
 **Designed**
 
 - **Live AWS read-only provider** — M4
@@ -275,6 +296,7 @@ M3a added SC-7, RA-3, and CA-7 by reusing existing collectors and patterns — z
 | M3e: Docker packaging | Shipped, live-verified (2026-07-23) |
 | M3f: tag provenance (directional migration records, authority-controlled) | Shipped, unit-verified (2026-07-22) |
 | M3g: custody chain (evidence bundle, verify-bundle, Cosign signing) | Shipped, live-verified (2026-07-22) |
+| 0.4.0: reproducibility flags + run metadata (model/temperature/repeat, served-model + usage capture, control intent on reports) | Shipped, unit-verified (2026-08-30) |
 | M4: live AWS read-only provider | Planned |
 
 ---
@@ -282,7 +304,7 @@ M3a added SC-7, RA-3, and CA-7 by reusing existing collectors and patterns — z
 ## Tests
 
 ```bash
-bun test              # 21 tests: unit + citation guard + loop invariants
+bun test              # 189 tests across 12 files: unit + citation guard + loop invariants + provider config
 bun test src/agent/agent.test.ts   # integration (requires ANTHROPIC_API_KEY in .env)
 ```
 
