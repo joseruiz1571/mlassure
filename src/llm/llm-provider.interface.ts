@@ -40,6 +40,9 @@ export type LlmCompletionParams = {
 export type LlmCompletionResult = {
   stopReason: string;
   content: LlmContentBlock[];
+  /** Model id the API reports it served (may be a dated snapshot, not the alias). */
+  model?: string;
+  usage?: { inputTokens: number; outputTokens: number };
 };
 
 export interface LlmProvider {
