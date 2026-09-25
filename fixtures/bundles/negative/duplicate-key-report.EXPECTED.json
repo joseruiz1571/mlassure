@@ -1,0 +1,5 @@
+{
+  "check": "V-2",
+  "errorPattern": "^report\\.json contains a duplicate object key \"targetName\" at \\$",
+  "description": "A second top-level \"targetName\" member inserted BEFORE the real one in report.json, then report.json re-manifested (sha256 + bytes) and rootHash re-sealed, so integrity and completeness both pass and the strict parse is the ONLY violation. V-2 applies to report.json because V-11 reads it."
+}

@@ -1,0 +1,5 @@
+{
+  "check": "V-11",
+  "errorPattern": "^manifest targetName \"fraud-detection-v3\" disagrees with report\\.json \"fraud-detection-v2\"",
+  "description": "manifest targetName changed to fraud-detection-v3 and rootHash re-sealed, so the manifest is internally consistent and every file digest still matches. Only the cross-check against the hash-covered report.json catches it: an attacker who recomputes the root hash must also edit report.json, which V-9 then names."
+}

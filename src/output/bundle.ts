@@ -40,6 +40,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import type { AssessmentReport } from "../runner/assessment-runner.js";
+import { parseJsonStrict, DuplicateKeyError } from "./strict-json.js";
 
 export const BUNDLE_FORMAT_VERSION = "1";
 export const MANIFEST_FILENAME = "manifest.json";
@@ -123,6 +124,12 @@ export type WriteBundleOptions = {
   oscal?: unknown;
   /** Markdown narrative produced by this same run. */
   narrative?: string;
+  /**
+   * Manifest `createdAt` override (ISO 8601). Only for reproducible fixture
+   * generation (the conformance vectors, M6) — production runs stamp the
+   * wall clock.
+   */
+  createdAt?: string;
 };
 
 export function writeEvidenceBundle(
@@ -196,7 +203,7 @@ export function writeEvidenceBundle(
   const meta: ManifestMeta = {
     bundleFormatVersion: BUNDLE_FORMAT_VERSION,
     algorithm: "sha256",
-    createdAt: new Date().toISOString(),
+    createdAt: opts.createdAt ?? new Date().toISOString(),
     targetName: report.targetName,
     controlSetVersion: report.controlSetVersion,
   };
@@ -284,11 +291,14 @@ function entryViolation(entry: unknown, index: number, seen: Set<string>): strin
   if (ALLOWED_UNMANIFESTED.includes(p.normalize("NFC"))) {
     return `manifest files[${index}] path "${p}" names the manifest or a signature artifact — these are never manifested`;
   }
-  if (typeof e["sha256"] !== "string" || !/^[0-9a-f]{64}$/i.test(e["sha256"])) {
-    return `manifest files[${index}] ("${p}") has no valid sha256`;
+  if (typeof e["sha256"] !== "string" || !/^[0-9a-f]{64}$/.test(e["sha256"])) {
+    // Lowercase only (SPEC §4): the writer never emits uppercase, and a
+    // digest that must be case-folded before comparison is two byte strings
+    // pretending to be one (Proof-of-Control canonical-form rule 6).
+    return `manifest files[${index}] ("${p}") has no valid sha256 (64 lowercase hex)`;
   }
-  if (typeof e["bytes"] !== "number") {
-    return `manifest files[${index}] ("${p}") has no numeric byte size`;
+  if (typeof e["bytes"] !== "number" || !Number.isInteger(e["bytes"]) || e["bytes"] < 0) {
+    return `manifest files[${index}] ("${p}") has no numeric byte size (non-negative integer)`;
   }
   const norm = p.normalize("NFC");
   if (seen.has(norm)) {
@@ -316,10 +326,23 @@ export function verifyEvidenceBundle(dir: string): VerifyResult {
     };
   }
 
+  // (V-2) strict parse: a duplicate key is a custody violation, never a
+  // last-wins resolution — one manifest must mean one thing to every reader
+  // (Proof-of-Control C7.7.5).
   let manifest: BundleManifest;
   try {
-    manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as BundleManifest;
+    manifest = parseJsonStrict(readFileSync(manifestPath, "utf-8")) as BundleManifest;
   } catch (err) {
+    if (err instanceof DuplicateKeyError) {
+      return {
+        ok: false,
+        checkedFiles: 0,
+        rootHash: null,
+        errors: [
+          `${MANIFEST_FILENAME} contains a duplicate object key "${err.key}" at ${err.path} — a document that can mean different things to different parsers is not a custody manifest`,
+        ],
+      };
+    }
     return {
       ok: false,
       checkedFiles: 0,
@@ -327,7 +350,7 @@ export function verifyEvidenceBundle(dir: string): VerifyResult {
       errors: [`${MANIFEST_FILENAME} is not valid JSON: ${err instanceof Error ? err.message : String(err)}`],
     };
   }
-  if (!Array.isArray(manifest.files) || typeof manifest.rootHash !== "string") {
+  if (typeof manifest !== "object" || manifest === null || !Array.isArray(manifest.files) || typeof manifest.rootHash !== "string") {
     return {
       ok: false,
       checkedFiles: 0,
@@ -336,15 +359,36 @@ export function verifyEvidenceBundle(dir: string): VerifyResult {
     };
   }
 
+  // (V-4, V-5) the verifier implements exactly one format and one digest
+  // algorithm, and refuses to guess either (Proof-of-Control C7.7.3: a
+  // verifier presented with an unidentified digest rejects it rather than
+  // assuming an algorithm). Both are violations, not early returns, so the
+  // remaining checks still name everything else that is wrong.
+  if (manifest.bundleFormatVersion !== BUNDLE_FORMAT_VERSION) {
+    errors.push(
+      `unsupported bundleFormatVersion ${JSON.stringify(manifest.bundleFormatVersion)} — this verifier implements format "${BUNDLE_FORMAT_VERSION}" only and refuses to guess`
+    );
+  }
+  if (manifest.algorithm !== "sha256") {
+    errors.push(
+      `unrecognized digest algorithm ${JSON.stringify(manifest.algorithm)} — the verifier never assumes an algorithm; only "sha256" is implemented`
+    );
+  }
+
   // The writer always bundles report.json, so an empty-files manifest is
   // proof of tampering — without this check, gutting a bundle and dropping
   // in a trivial manifest verifies "OK — 0 files" (hunter finding, M3g).
   if (manifest.files.length === 0) {
+    // Terminal, but never discards what V-4/V-5 already found (second-look
+    // finding, M6): the returned list carries every violation seen so far.
     return {
       ok: false,
       checkedFiles: 0,
       rootHash: null,
-      errors: [`manifest lists zero files — the writer always bundles report.json; this manifest was not produced by mlassure`],
+      errors: [
+        ...errors,
+        `manifest lists zero files — the writer always bundles report.json; this manifest was not produced by mlassure`,
+      ],
     };
   }
 
@@ -425,7 +469,7 @@ export function verifyEvidenceBundle(dir: string): VerifyResult {
   // report.json (which check (a) then catches as a hash mismatch).
   try {
     const reportRaw = readFileSync(join(dir, "report.json"), "utf-8");
-    const report = JSON.parse(reportRaw) as { targetName?: unknown; controlSetVersion?: unknown };
+    const report = parseJsonStrict(reportRaw) as { targetName?: unknown; controlSetVersion?: unknown };
     if (report.targetName !== manifest.targetName) {
       errors.push(
         `manifest targetName "${manifest.targetName}" disagrees with report.json "${String(report.targetName)}"`
@@ -436,9 +480,16 @@ export function verifyEvidenceBundle(dir: string): VerifyResult {
         `manifest controlSetVersion "${manifest.controlSetVersion}" disagrees with report.json "${String(report.controlSetVersion)}"`
       );
     }
-  } catch {
+  } catch (err) {
     // report.json missing/unreadable/unparseable is already reported by (a)
-    // or the report.json-presence check — don't double-report here.
+    // or the report.json-presence check — don't double-report here. A
+    // DUPLICATE KEY is the one parse failure (a) cannot see (the bytes hash
+    // fine), so it is named here.
+    if (err instanceof DuplicateKeyError) {
+      errors.push(
+        `report.json contains a duplicate object key "${err.key}" at ${err.path} — one artifact must mean one thing to every reader`
+      );
+    }
   }
 
   // (c) completeness: every file on disk is accounted for

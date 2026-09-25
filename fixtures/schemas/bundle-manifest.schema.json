@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/joseruiz1571/mlassure/fixtures/schemas/bundle-manifest.schema.json",
+  "title": "mlassure custody bundle manifest, format 1",
+  "description": "Machine-readable form of SPEC.md section 4. Structural validity only: the root-hash construction (SPEC section 4.1), file existence, and byte hashes are checked by the verifier (SPEC section 5), not by this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["bundleFormatVersion", "algorithm", "createdAt", "targetName", "controlSetVersion", "files", "rootHash"],
+  "properties": {
+    "bundleFormatVersion": { "const": "1" },
+    "algorithm": {
+      "const": "sha256",
+      "description": "Algorithm identifier for every digest in this manifest (files[].sha256 and rootHash). Mandatory; a verifier never assumes one."
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "targetName": { "type": "string", "minLength": 1 },
+    "controlSetVersion": { "type": "string", "minLength": 1 },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256", "bytes"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?![/~])(?!.*\\.\\.)(?!.*\\\\)[^\\u0000]+$",
+            "description": "Relative, /-separated, NFC-normalized; never absolute, never containing .. or backslash; never manifest.json or a signature artifact."
+          },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "bytes": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "rootHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

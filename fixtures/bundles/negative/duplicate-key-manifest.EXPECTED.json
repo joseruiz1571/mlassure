@@ -1,0 +1,5 @@
+{
+  "check": "V-2",
+  "errorPattern": "^manifest\\.json contains a duplicate object key \"rootHash\" at \\$",
+  "description": "A second top-level \"rootHash\" member inserted BEFORE the real one. JSON.parse would have accepted this document and returned the genuine root hash, so a lenient verifier sees nothing wrong; strict parsing must reject a manifest that can mean two things to two readers."
+}

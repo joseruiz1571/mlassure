@@ -1,0 +1,5 @@
+{
+  "check": "V-7",
+  "errorPattern": "^manifest files\\[\\d+\\] path \"\\.\\./outside\\.json\" escapes the bundle",
+  "description": "An entry with path \"../outside.json\" appended, rootHash re-sealed. Manifest entries are untrusted input: a verifier must reject an escaping path BEFORE it touches the filesystem, or a hostile manifest points verification at files outside the bundle."
+}

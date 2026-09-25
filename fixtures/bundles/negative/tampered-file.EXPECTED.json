@@ -1,0 +1,5 @@
+{
+  "check": "V-9",
+  "errorPattern": "^hash mismatch: report\\.json",
+  "description": "A verdict flipped inside report.json after the manifest was written (\"satisfied\" to \"not-satisfied\"), manifest untouched. This is the core tamper-evidence case: the document still parses, still carries the right targetName, and is still the right shape — only the bytes changed, and the digest names the file."
+}

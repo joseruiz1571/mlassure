@@ -1,0 +1,5 @@
+{
+  "check": "V-7",
+  "errorPattern": "^manifest files\\[\\d+\\] duplicates path \"narrative\\.md\"",
+  "description": "The narrative.md entry listed twice (identical digest and size), rootHash re-sealed over the doubled entry list. Duplicate entries inflate the verified-file count; the second occurrence is a shape violation before any file is read."
+}

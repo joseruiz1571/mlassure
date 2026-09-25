@@ -11,3 +11,10 @@ bun.lockb
 cosign.key
 out/
 bundles/
+
+# Conformance vectors (M6) are committed fixtures, not run output — re-include
+# them below the bundles/ rule, and the one deliberate .DS_Store in the
+# extra-file negative vector (git cannot re-include a file whose parent dir
+# is excluded, so the directory negation must come first).
+!fixtures/bundles/
+!fixtures/bundles/negative/extra-file/.DS_Store

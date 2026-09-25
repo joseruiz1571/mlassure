@@ -1,0 +1,5 @@
+{
+  "check": "V-6",
+  "errorPattern": "^manifest lists zero files",
+  "description": "files[] emptied and rootHash re-sealed over it — the gutted-bundle attack. Without this check a verifier reports OK with zero files verified; the writer always bundles report.json, so an empty file list is proof the manifest was not produced by mlassure."
+}

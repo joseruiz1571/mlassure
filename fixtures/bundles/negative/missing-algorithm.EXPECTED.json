@@ -1,0 +1,5 @@
+{
+  "check": "V-5",
+  "errorPattern": "^unrecognized digest algorithm undefined",
+  "description": "The algorithm member removed entirely, with rootHash re-sealed over the metadata as it now reads. An absent digest identifier is the same violation as an unknown one — the verifier must not fall back to its own default."
+}

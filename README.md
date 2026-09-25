@@ -1,5 +1,7 @@
 # MLAssure
 
+[![ci](https://github.com/joseruiz1571/mlassure/actions/workflows/ci.yml/badge.svg)](https://github.com/joseruiz1571/mlassure/actions/workflows/ci.yml) [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
+
 Agentic AI-control assurance. Point it at an ML model and a control set; it collects evidence from AWS, runs an LLM judgment loop only where judgment is actually required, and emits verdicts where every claimed evidence ID traces back to something actually retrieved this run.
 
 **The citation invariant:** if a judgment cites evidence ID `X`, then `X` must exist in the evidence store for that run. The guard is fail-closed — a hallucinated ID throws `CitationError` before anything is returned.
@@ -103,6 +105,8 @@ The image never bakes in `ANTHROPIC_API_KEY` — no build `ARG`, no `ENV` with a
 ---
 
 ## Custody chain
+
+The bundle format is specified on its own in [`SPEC.md`](SPEC.md), with a machine-readable manifest schema (`fixtures/schemas/bundle-manifest.schema.json`) and conformance vectors in [`fixtures/bundles/`](fixtures/bundles/README.md): one positive bundle and seventeen single-fault negatives, each of which must be rejected *for its stated reason*. How the format lines up against LF Decentralized Trust's Proof-of-Control standard — and why it is Tier 2, not Proof-of-Control — is in [`docs/proof-of-control.md`](docs/proof-of-control.md).
 
 Every assessment run can emit a tamper-evident evidence bundle:
 
@@ -297,14 +301,23 @@ M3a added SC-7, RA-3, and CA-7 by reusing existing collectors and patterns — z
 | M3f: tag provenance (directional migration records, authority-controlled) | Shipped, unit-verified (2026-07-22) |
 | M3g: custody chain (evidence bundle, verify-bundle, Cosign signing) | Shipped, live-verified (2026-07-22) |
 | 0.4.0: reproducibility flags + run metadata (model/temperature/repeat, served-model + usage capture, control intent on reports) | Shipped, unit-verified (2026-08-30) |
-| M4: live AWS read-only provider | Planned |
+| 0.5.0 / M5–M7: release hygiene, custody chain [`SPEC.md`](SPEC.md) + conformance vectors + strict-parse and algorithm-id checks, [Proof-of-Control crosswalk](docs/proof-of-control.md) | Shipped, unit-verified (2026-09-25) |
+| M8: target generalization + Proof-of-Control control family (assess a system's evidence tokens / conformance statement; OSCAL AR answers the procurement binary) | Designed — see `docs/proof-of-control.md` §6 |
+| M9: Tier-3 custody path (keyless Cosign + Rekor inclusion proof in the bundle, `verify-bundle --rekor`) | Planned — `docs/proof-of-control.md` §5 |
+| M4: live AWS read-only provider | Post-1.0 — deferred 2026-08-14: the demand story is OSCAL/ISO 42001-shaped, not AWS-shaped |
+
+---
+
+## Maintenance posture
+
+Single maintainer, best-effort. Issues and pull requests are read; response time is not guaranteed.
 
 ---
 
 ## Tests
 
 ```bash
-bun test              # 189 tests across 12 files: unit + citation guard + loop invariants + provider config
+bun test              # unit + citation guard + loop invariants + provider config + custody conformance vectors
 bun test src/agent/agent.test.ts   # integration (requires ANTHROPIC_API_KEY in .env)
 ```
 

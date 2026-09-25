@@ -1,0 +1,18 @@
+{
+  "controlId": "SI-6(1)",
+  "cited": true,
+  "evidence": {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "source": "aws:sagemaker:describe-endpoint",
+    "retrievedAt": "2026-09-25T00:00:00.000Z",
+    "sha256": "d7503eb7203649cbaf2884dad4cdac648b52b5d5819fcf41162879fff700ab1b",
+    "payload": {
+      "EndpointName": "fraud-detection-v2-prod",
+      "EndpointStatus": "InService",
+      "DataCaptureConfig": {
+        "EnableCapture": true,
+        "InitialSamplingPercentage": 100
+      }
+    }
+  }
+}

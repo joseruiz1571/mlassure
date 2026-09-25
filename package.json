@@ -1,7 +1,12 @@
 {
   "name": "mlassure",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Agentic AI-control assurance — evidence-grounded conformance assessment for ML models",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/joseruiz1571/mlassure.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "bun run src/cli/index.ts",
