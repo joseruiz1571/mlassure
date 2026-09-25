@@ -1,11 +1,11 @@
 ---
 task: mlassure 1.0 course — M5 release hygiene, M6 custody SPEC + conformance vectors, M7 Proof-of-Control alignment
 slug: mlassure-1-0-course
-phase: climbing
-progress: 22/24
+phase: complete
+progress: 24/24
 mode: algorithm
 started: 2026-09-25T07:30:00Z
-updated: 2026-09-25T12:45:00Z
+updated: 2026-09-25T12:50:00Z
 project: mlassure
 principal_stated_goal: "pick up mlassure, chart a course forward to 1.0 within the context of my other relevant work, im going to bed, don't stop to ask for permissions, push ahead as much as possible, leave me a list of blockers i need to help with, you have 4 hours to reflect, pick and direction, polan out the work, and move forward, the linux foundaiton ltds proof of control work and repository is really relevant here"
 principal_stated_goal_source: prompt
@@ -1213,8 +1213,8 @@ The pattern tag on a control is a vocabulary assignment. M3f makes each assignme
 - [x] ISC-RUN-1: branch pushed, PR open against `main` with the CHANGE/VERIFY summary. Falsifier: `gh pr view`. — evidence: PR #2 https://github.com/joseruiz1571/mlassure/pull/2; CI run 36134274184 success
 - [x] ISC-RUN-2: Linear: parent issue "mlassure 1.0 course" created linking BUI-62/68/63/64; BUI-62 + BUI-68 moved to In Progress with resume comments; blockers listed in the parent. Falsifier: `get_issue`. — evidence: BUI-108 created (parent, links 62/68/63/64/69); BUI-62 + BUI-68 In Progress with resume comments; blockers in BUI-108 comment
 - [x] ISC-RUN-3: independent second look (Max, read-only) on SPEC.md + docs/proof-of-control.md, findings dispositioned in Decisions. Falsifier: Decisions row. — evidence: Max review 15 findings, all dispositioned in Decisions row above; Forge skipped for cause (no codex CLI)
-- [ ] ISC-RUN-4: blockers list delivered in the final message and mirrored in the Linear parent. Falsifier: both present.
-- [ ] ISC-RUN-5: `~/code/mlassure` working tree clean on the feature branch at close. Falsifier: `git status`.
+- [x] ISC-RUN-4: blockers list delivered in the final message and mirrored in the Linear parent. Falsifier: both present. — evidence: 6 blockers in BUI-108 comments and in the closing message
+- [x] ISC-RUN-5: `~/code/mlassure` working tree clean on the feature branch at close. Falsifier: `git status`. — evidence: git status --short empty at 8bef23e on feat/1.0-course
 
 ## Not yet specified (1.0)
 
