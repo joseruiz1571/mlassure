@@ -1,0 +1,5 @@
+{
+  "check": "V-10",
+  "errorPattern": "^rootHash mismatch: manifest stores ",
+  "description": "rootHash replaced with 64 zeroes, every entry left correct. The manifest is internally inconsistent: its stored commitment does not match the recomputation over its own metadata and entries."
+}

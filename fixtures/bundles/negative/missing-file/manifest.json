@@ -1,0 +1,40 @@
+{
+  "bundleFormatVersion": "1",
+  "algorithm": "sha256",
+  "createdAt": "2026-09-25T00:00:00.000Z",
+  "targetName": "fraud-detection-v2",
+  "controlSetVersion": "nist-subset-1.0",
+  "files": [
+    {
+      "path": "report.json",
+      "sha256": "64b49b97b99be765746d3e34fccfcba48727265f2af433d41be3657d624979ee",
+      "bytes": 4028
+    },
+    {
+      "path": "evidence/00000000-0000-4000-8000-000000000001.json",
+      "sha256": "cce77b64ee8233a69d5c17d9647390fcf6d3e136469c832baeb4580a0f0f8fc5",
+      "bytes": 512
+    },
+    {
+      "path": "evidence/00000000-0000-4000-8000-000000000002.json",
+      "sha256": "9690eacc2481ef05f65488f2323afe371c129c2ac5182ad17ba13e21017a7bc3",
+      "bytes": 491
+    },
+    {
+      "path": "evidence/00000000-0000-4000-8000-000000000003.json",
+      "sha256": "9947d2291df371c5118c1d250fdf91dfa8930676c11b0560da203561f66a2a64",
+      "bytes": 454
+    },
+    {
+      "path": "oscal.json",
+      "sha256": "2fadb177c3c7800ee997f8050d4099cc7ffb95484cf0e4570920801ad330ad4b",
+      "bytes": 937
+    },
+    {
+      "path": "narrative.md",
+      "sha256": "8f95ae94af11dbeeafec0f650c7d553dd0684bd244994e1f34cc2c14efc6b6dd",
+      "bytes": 465
+    }
+  ],
+  "rootHash": "df71e1e04d32a11b7c1c0dc6db6e8139310672c96b350c961de37f9d2e754b59"
+}

@@ -1,0 +1,9 @@
+{
+  "bundleFormatVersion": "1",
+  "algorithm": "sha256",
+  "createdAt": "2026-09-25T00:00:00.000Z",
+  "targetName": "fraud-detection-v2",
+  "controlSetVersion": "nist-subset-1.0",
+  "files": [],
+  "rootHash": "1caf57a9b0ff476e37716094dab4163f0942880fea2e6b2b23960f28f3fc407e"
+}

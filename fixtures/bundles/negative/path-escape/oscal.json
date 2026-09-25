@@ -1,0 +1,36 @@
+{
+  "assessment-results": {
+    "uuid": "00000000-0000-4000-8000-00000000a001",
+    "metadata": {
+      "title": "mlassure assessment results — fraud-detection-v2",
+      "last-modified": "2026-09-25T00:00:00.000Z",
+      "version": "1",
+      "oscal-version": "1.1.2"
+    },
+    "import-ap": {
+      "href": "#nist-subset-1.0"
+    },
+    "results": [
+      {
+        "uuid": "00000000-0000-4000-8000-00000000a002",
+        "title": "mlassure agentic control assessment",
+        "description": "Conformance-vector fixture. Not a real assessment.",
+        "start": "2026-09-25T00:00:00.000Z",
+        "reviewed-controls": {
+          "control-selections": [
+            {
+              "include-controls": [
+                {
+                  "control-id": "si-6.1"
+                },
+                {
+                  "control-id": "ac-6.1"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "check": "V-7",
+  "errorPattern": "^manifest files\\[\\d+\\] \\(\"narrative\\.md\"\\) has no valid sha256 \\(64 lowercase hex\\)",
+  "description": "narrative.md's manifest digest uppercased. A digest that must be case-folded before comparison is two byte strings pretending to be one, so uppercase hex is a violation rather than a normalization. Expected companion: because the entry fails shape validation it is never added to the accounted-paths set, so V-12 also reports narrative.md as an unaccounted file. The named check is V-7."
+}

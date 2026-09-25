@@ -1,15 +1,18 @@
 ---
-task: mlassure TODO-m3e-docker-build-verify closure — live Docker build/run verification
-slug: mlassure-docker-verify
-effort: E3
-phase: complete
-progress: 11/11
+task: mlassure 1.0 course — M5 release hygiene, M6 custody SPEC + conformance vectors, M7 Proof-of-Control alignment
+slug: mlassure-1-0-course
+phase: climbing
+progress: 18/24
 mode: algorithm
-started: 2026-07-23T02:00:00Z
-updated: 2026-07-23T06:20:00Z
+started: 2026-09-25T07:30:00Z
+updated: 2026-09-25T08:10:00Z
 project: mlassure
-effort_source: classifier
-prior_phase_note: "M3a-f complete — see sections above."
+principal_stated_goal: "pick up mlassure, chart a course forward to 1.0 within the context of my other relevant work, im going to bed, don't stop to ask for permissions, push ahead as much as possible, leave me a list of blockers i need to help with, you have 4 hours to reflect, pick and direction, polan out the work, and move forward, the linux foundaiton ltds proof of control work and repository is really relevant here"
+principal_stated_goal_source: prompt
+principal_stated_goal_signal: 1
+principal_stated_goal_locked: 2026-09-25T07:30:00Z
+context_sufficient: true
+prior_phase_note: "M0–M3g + 0.4.0 complete — see sections above. 2026-09-25: 1.0 course opened (sections at the end of this file)."
 ---
 
 ## Problem
@@ -1153,3 +1156,67 @@ The pattern tag on a control is a vocabulary assignment. M3f makes each assignme
 - ISC-188 (LIVE): live runs against `model-clean.json` and `model-stale.json` both produced `evidenceCoverage: 1` / `coverageConfidence: "high"` for every control including SA-10 (vacuous) — no NaN, no broken values; programmatic inspection of both OSCAL outputs confirmed via `node -e` one-liners reading the written JSON directly.
 - ISC-189: confirmed across all three surfaces — OSCAL retains the original `confidence` prop unchanged, narrative renders the self-reported line unconditionally, CLI prints `self-reported:` unconditionally.
 - ISC-190/191/192 (delegation review, post-fix): code-reviewer found and I fixed the duplicate-collector denominator bug + documented the unconsumed `collectorsCalled` field; silent-failure-hunter found and I fixed the `deriveCoverageConfidence` fail-loud gap (6 new unit tests) + the duplicate-evidence-id silent-log gap (now `console.error`s with control/collector context) + added a duplicate-`evidenceCited` regression test + a CLI doc comment; Cato returned `skipped` (no codex access, standing limitation, not a blocker). Final full suite after all fixes: `bun test` → `76 pass, 0 fail, 197 expect() calls. Ran 76 tests across 8 files.` Live CLI re-run after every fix confirms unchanged correct behavior (`conf:high self-reported:high` for all 5 controls on the clean fixture, including SA-10).
+
+
+## 1.0 Roadmap (opened 2026-09-25)
+
+**Direction (decision, 2026-09-25):** mlassure 1.0 is *a reference conformance assessor whose own custody chain is a published, interoperable, independently verifiable evidence format, positioned against LF Decentralized Trust's Proof-of-Control standard (v1.0 draft, launched 2026-09-23, public comment through 2026-10-30).* It is NOT "M4 live AWS provider." Rationale: (1) the 2026-08-14 triage already recorded that demand is OSCAL/ISO-42001-shaped, not AWS-shaped; (2) Proof-of-Control C7.7 (the Interoperable Property: machine-readable schema, single canonical serialization, algorithm-tagged digests, published negative test vectors rejected for the stated reason, duplicate-key rejection) is a near-verbatim spec for BUI-62 (SPEC.md + conformance fixtures), which was already the highest-priority open item; (3) mlassure's standing thesis — custody is provable, judgment is not — is Proof-of-Control's own C7.5 determinism boundary, so the alignment costs no position; (4) the comment window is the credibility window for Jose's standards-adoption ladder (Linear project "Standards Adoption"). M4 moves to post-1.0.
+
+| Milestone | What | Status |
+|---|---|---|
+| M5 | Release hygiene: LICENSE (Apache-2.0), CHANGELOG, SECURITY.md, CI (typecheck + test), maintenance-posture line, tags through v0.4.0 | this run |
+| M6 | Custody chain SPEC.md (bundle format v1) + `fixtures/bundles/` conformance vectors (positive + negative, each negative naming the check it must fail) + verifier hardening for algorithm-id and duplicate-key rejection (C7.7.3, C7.7.5) → 0.5.0 | this run |
+| M7 | `docs/proof-of-control.md`: requirement-level crosswalk of the custody chain against PoC C7.3/C7.5/C7.6/C7.7/C8.1/C10, honest tier placement (Tier 2 today; Tier 3 path named), C10.2 trust-assumption disclosure; public-comment draft for Jose (outside the repo) | this run |
+| M8 | Target generalization + Proof-of-Control control family: provider interface decoupled from SageMaker; `fixtures/controls/poc-c7-subset.yaml` assessing a PoC evidence token / conformance statement with deterministic checks (7.7.1 schema-valid, 7.7.3 tagged digests, 7.7.5 duplicate keys, 7.6.2 monotonic step_index), attestation (7.3.2 key custody), synthesis (10.2 disclosure completeness); OSCAL AR answers the procurement binary | designed here, built next session — needs Jose's call on provider-generalization scope |
+| M9 | Tier-3 path for the custody chain: keyless Sigstore signing with Rekor inclusion proof recorded in the bundle (external anchoring, C7.2.2/C7.6.6/C8.1.6); `verify-bundle --rekor` | post-M8 |
+| 1.0 gate | A stranger can clone, run the fixtures, write a bundle, verify it, sign and verify keyless, validate the OSCAL AR against NIST's schema, and run the conformance vectors — all from README, with CI green proving it; SPEC.md and the PoC crosswalk published; CHANGELOG current | after M8 |
+| post-1.0 | M4 live AWS read-only provider; BUI-10 GRC Club Finding contract; BUI-11 SCF crosswalk; BUI-63 OMS/CycloneDX comparison | backlog |
+
+## 1.0 Anti-claims
+
+- The run never claims mlassure "has Proof-of-Control" or is Tier 3. Operator-selected signer + operator-held key = Tier 2 by C8.1.3; the words "Proof-of-Control" appear only in the crosswalk's tier analysis, never as a badge (C8.1.4).
+- No bundle format change breaks verification of bundles written by 0.4.0 (bundle format version stays "1"; new checks reject only what the 0.4.0 writer never produced).
+- No public push to `main`; work lands on a branch + PR for Jose's morning review. Tags for already-released commits may be pushed (reversible).
+- Nothing from `~/.claude` (paths, identity, ISA prose) enters the public repo.
+- No fabricated history: CHANGELOG entries trace to commits/tags that exist.
+
+## M5 Criteria (release hygiene)
+
+- [x] ISC-M5-1: `LICENSE` exists at repo root and is the verbatim Apache-2.0 text; `package.json` `license` is `Apache-2.0`. Falsifier: `head -3 LICENSE` + `grep '"license"' package.json`. — evidence: LICENSE line 1-3 Apache text, line 190 copyright; package.json license Apache-2.0
+- [x] ISC-M5-2: `CHANGELOG.md` exists with sections 0.1.0, 0.2.0, 0.3.0, 0.4.0, Unreleased; every dated entry names a commit or tag that `git log` contains. Falsifier: grep each hash against `git rev-parse`. — evidence: CHANGELOG.md; all 9 distinct hashes resolve via git rev-parse; tag dates match git log
+- [x] ISC-M5-3: `.github/workflows/ci.yml` runs `bun install --frozen-lockfile`, `bun run typecheck`, `bun test` on push + PR; integration tests skip cleanly without `ANTHROPIC_API_KEY`. Falsifier: read-back + local `bun test` with the key unset exits 0. — evidence: .github/workflows/ci.yml read back; `bun test` no key: 220 pass 3 skip 0 fail
+- [x] ISC-M5-4: `SECURITY.md` states reporting path and the bundle-at-rest warning. Falsifier: Read. — evidence: SECURITY.md 35 lines, README warning quoted verbatim
+- [x] ISC-M5-5: README carries a license badge, a maintenance-posture line ("single maintainer, best-effort"), and its Status table marks M4 post-1.0 with the reason. Falsifier: grep. — evidence: README: badges line 3, Maintenance posture section, M4 row post-1.0
+- [ ] ISC-M5-6: tag `v0.4.0` exists on the 0.4.0 commit and is pushed alongside the existing tags. Falsifier: `git ls-remote --tags origin`.
+
+## M6 Criteria (custody chain SPEC + conformance vectors, 0.5.0)
+
+- [x] ISC-M6-1: `SPEC.md` at repo root documents bundle format v1: directory layout, manifest fields and types, root-hash construction (exact JSON encoding, NFC, UTF-16 sort), write-order guarantee, signature-artifact exemption list, the numbered verification checks with their error-string prefixes, and what the format does not prove. Falsifier: Read + every check name in SPEC appears in `bundle.ts`. — evidence: SPEC.md 234+ lines; §5 prefixes match bundle.ts strings (generator self-check + vectors test)
+- [x] ISC-M6-2: `verifyEvidenceBundle` rejects a manifest whose `algorithm` is absent or not `sha256` with an error naming the check (C7.7.3), and existing 0.4.0 bundles still verify. Falsifier: unit test both ways. — evidence: bundle.test.ts "V-5: unrecognized/absent algorithm" + "V-4" tests pass
+- [x] ISC-M6-3: `verifyEvidenceBundle` rejects a `manifest.json` containing a duplicate object key anywhere, with an error naming the key (C7.7.5). Falsifier: unit test with a hand-written duplicate-key manifest; `JSON.parse` alone would have accepted it. — evidence: strict-json.test.ts 5 pass; bundle.test.ts V-2 tests (manifest + files[] + report.json) pass
+- [x] ISC-M6-4: `fixtures/bundles/` holds ≥1 positive vector and ≥8 negative vectors; each negative directory carries `EXPECTED.json` naming the single check it exercises and the error-string prefix. Falsifier: `ls` + Read. — evidence: fixtures/bundles: 1 positive, 15 negatives, 15 EXPECTED.json beside; 126 files byte-identical over 2 generator runs
+- [x] ISC-M6-5: `src/output/bundle.vectors.test.ts` runs the verifier over every vector directory and asserts each negative fails *for its stated reason* (error prefix match) and the positive passes. Falsifier: `bun test` green; delete one EXPECTED.json → test fails loudly. — evidence: bundle.vectors.test.ts: 21 tests pass incl. wrong-reason assertion; fixture-thinness guard
+- [x] ISC-M6-6: `bun run dev -- verify-bundle fixtures/bundles/positive/<name>` exits 0 and `... negative/<name>` exits 1 naming the violation. Falsifier: checked exit codes. — evidence: verify-bundle positive exit 0 (6 files); negative/tampered-file exit 1 naming hash mismatch
+- [x] ISC-M6-7: version bumped to 0.5.0 in `package.json`, CHANGELOG Unreleased → 0.5.0 with the two new rejections and the vectors. Falsifier: grep. — evidence: package.json 0.5.0; CHANGELOG [0.5.0] - 2026-09-25
+- [x] ISC-M6-8: full suite green, typecheck clean. Falsifier: `bun test`, `bun run typecheck`. — evidence: bun test 220 pass / 3 skip / 0 fail, 223 tests 15 files; tsc --noEmit clean
+
+## M7 Criteria (Proof-of-Control alignment)
+
+- [x] ISC-M7-1: `docs/proof-of-control.md` maps every requirement in PoC C7.3, C7.5, C7.6, C7.7 and C8.1 to one of {met, partial, not met, out of scope} with the mlassure mechanism or gap named, citing requirement IDs in the standard's `v0.1-C7.7.3` form. Falsifier: every ID in the doc exists in `checklist/poc-checklist.json`. — evidence: docs/proof-of-control.md §3: every C7.1–C7.7, C8.1, C10.1–10.2 id from checklist rows
+- [x] ISC-M7-2: the doc states tier placement as Tier 2 with the C8.1.3 reason, names the Tier 3 path (M9), and contains a C10.2-shaped trust-assumption table using the draft categories. Falsifier: grep. — evidence: §2.1 Tier 2 via C8.1.2/8.1.3; §5 M9 path; §2.2 C10.2 table with draft categories
+- [x] ISC-M7-3: the doc never claims "Proof-of-Control" for mlassure (anti-claim 1). Falsifier: grep for the phrase outside quoted requirement text. — evidence: grep: phrase appears only in analysis; "Nothing here is Proof-of-Control" line 37
+- [x] ISC-M7-4: a public-comment draft exists OUTSIDE the repo at `~/Documents/01 Projects/Proof of Control/comment-draft.md` with ≥2 concrete, requirement-anchored comments and a send/no-send decision left to Jose. Falsifier: Read. — evidence: ~/Documents/01 Projects/Proof of Control/comment-draft.md: 4 points, decisions left to Jose
+- [x] ISC-M7-5: README links SPEC.md and docs/proof-of-control.md. Falsifier: grep. — evidence: README Custody chain + Status table link SPEC.md and docs/proof-of-control.md
+
+## Run Criteria (bookkeeping)
+
+- [ ] ISC-RUN-1: branch pushed, PR open against `main` with the CHANGE/VERIFY summary. Falsifier: `gh pr view`.
+- [ ] ISC-RUN-2: Linear: parent issue "mlassure 1.0 course" created linking BUI-62/68/63/64; BUI-62 + BUI-68 moved to In Progress with resume comments; blockers listed in the parent. Falsifier: `get_issue`.
+- [ ] ISC-RUN-3: independent second look (Max, read-only) on SPEC.md + docs/proof-of-control.md, findings dispositioned in Decisions. Falsifier: Decisions row.
+- [ ] ISC-RUN-4: blockers list delivered in the final message and mirrored in the Linear parent. Falsifier: both present.
+- [ ] ISC-RUN-5: `~/code/mlassure` working tree clean on the feature branch at close. Falsifier: `git status`.
+
+## Not yet specified (1.0)
+
+- M8 provider generalization shape: a second collector interface per target family vs. a generic `EvidenceProvider` keyed by collector name. Jose's call.
+- Whether the PoC control family targets a single evidence token, a token stream, or the conformance statement (C10.1.7 machine-readable statement — format not yet defined by the WG).

@@ -1,0 +1,5 @@
+{
+  "check": "V-5",
+  "errorPattern": "^unrecognized digest algorithm \"sha1\"",
+  "description": "algorithm set to \"sha1\" with rootHash re-sealed over the new metadata. The digest identifier is mandatory and never assumed: a verifier handed an algorithm it does not implement rejects the manifest instead of hashing with sha256 and hoping."
+}

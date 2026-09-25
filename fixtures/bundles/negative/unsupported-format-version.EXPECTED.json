@@ -1,0 +1,5 @@
+{
+  "check": "V-4",
+  "errorPattern": "^unsupported bundleFormatVersion \"2\"",
+  "description": "bundleFormatVersion set to \"2\" with rootHash re-sealed over the new metadata, so V-10 stays quiet. A verifier implements a fixed set of versions and refuses the rest rather than guessing at a format it does not know."
+}

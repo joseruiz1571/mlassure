@@ -1,0 +1,17 @@
+{
+  "controlId": "AC-6(1)",
+  "cited": false,
+  "evidence": {
+    "id": "00000000-0000-4000-8000-000000000003",
+    "source": "aws:iam:get-role",
+    "retrievedAt": "2026-09-25T00:00:00.000Z",
+    "sha256": "f1a2332f6859c8aeafcf245341687077f0d54bb287c20b69de30b7dc29adca76",
+    "payload": {
+      "RoleName": "fraud-detection-v2-execution",
+      "AssumeRolePolicyDocument": {
+        "Version": "2012-10-17",
+        "Statement": []
+      }
+    }
+  }
+}

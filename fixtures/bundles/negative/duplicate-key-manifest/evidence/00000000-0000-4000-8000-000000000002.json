@@ -1,0 +1,15 @@
+{
+  "controlId": "SI-6(1)",
+  "cited": true,
+  "evidence": {
+    "id": "00000000-0000-4000-8000-000000000002",
+    "source": "aws:sagemaker:describe-monitoring-schedule",
+    "retrievedAt": "2026-09-25T00:00:00.000Z",
+    "sha256": "21a275652fa19b5cbe3e51307daf49ce6d8c8c8c5b5fd2015718fe5f1b8a16c5",
+    "payload": {
+      "MonitoringScheduleName": "fraud-detection-v2-model-quality",
+      "MonitoringScheduleStatus": "Scheduled",
+      "ScheduleExpression": "cron(0 * ? * * *)"
+    }
+  }
+}

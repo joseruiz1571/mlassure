@@ -1,0 +1,5 @@
+{
+  "check": "V-8",
+  "errorPattern": "^manifest does not list report\\.json",
+  "description": "The report.json entry removed from files[] with rootHash re-sealed, while report.json itself stays on disk. Every mlassure bundle contains a report, so a manifest that does not commit to it is not describing an mlassure bundle. Expected companion: report.json is now unmanifested content in the directory, so V-12 also reports it as an unaccounted file. The named check is V-8."
+}

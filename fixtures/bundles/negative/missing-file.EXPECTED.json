@@ -1,0 +1,5 @@
+{
+  "check": "V-9",
+  "errorPattern": "^missing file listed in manifest: narrative\\.md",
+  "description": "narrative.md deleted from disk while the manifest still commits to it. Silent removal of covered content is a custody violation, not a smaller bundle."
+}

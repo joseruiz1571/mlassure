@@ -1,0 +1,5 @@
+{
+  "check": "V-1",
+  "errorPattern": "^no manifest\\.json in ",
+  "description": "manifest.json deleted — the state a crash before the last write leaves behind. The bundle is unverifiable, not merely wrong."
+}

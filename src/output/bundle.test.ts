@@ -429,3 +429,123 @@ describe.skipIf(!cosignPresent)("cosign authenticity chain (M3g, empirical)", ()
     }
   }, 60000);
 });
+
+// M6 (0.5.0): the interoperability checks — a verifier that guesses the
+// digest algorithm, accepts a format it does not implement, or resolves a
+// duplicate key last-wins can be made to say "intact" about a manifest that
+// means something else to a different reader (Proof-of-Control C7.7.3,
+// C7.7.5). Each check gets a test that would have PASSED verification
+// before this milestone.
+describe("verifyEvidenceBundle (M6) — interoperability checks", () => {
+  function tamperManifest(dir: string, mutate: (m: BundleManifest) => BundleManifest | string): void {
+    const manifestPath = join(dir, "manifest.json");
+    const m = JSON.parse(readFileSync(manifestPath, "utf-8")) as BundleManifest;
+    const out = mutate(m);
+    writeFileSync(manifestPath, typeof out === "string" ? out : JSON.stringify(out, null, 2));
+  }
+
+  it("V-2: a duplicate key in manifest.json is a violation naming the key, never last-wins", () => {
+    const dir = freshDir();
+    const { report } = makeReport();
+    writeEvidenceBundle(report, dir);
+    tamperManifest(dir, (m) => {
+      // Insert a second rootHash BEFORE the real one so JSON.parse would keep
+      // the real one and verify OK — the strict parser must still refuse.
+      const text = JSON.stringify(m, null, 2);
+      return text.replace(`"rootHash":`, `"rootHash": "${"0".repeat(64)}",\n  "rootHash":`);
+    });
+    const r = verifyEvidenceBundle(dir);
+    expect(r.ok).toBe(false);
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0]).toMatch(/^manifest\.json contains a duplicate object key "rootHash" at \$/);
+  });
+
+  it("V-2: a duplicate key inside a files[] entry is caught with its path", () => {
+    const dir = freshDir();
+    const { report } = makeReport();
+    writeEvidenceBundle(report, dir);
+    tamperManifest(dir, (m) => {
+      const text = JSON.stringify(m, null, 2);
+      return text.replace(`"path": "report.json"`, `"path": "evidence/x.json", "path": "report.json"`);
+    });
+    const r = verifyEvidenceBundle(dir);
+    expect(r.ok).toBe(false);
+    expect(r.errors[0]).toMatch(/duplicate object key "path" at \$\.files\[\d+\]/);
+  });
+
+  it("V-5: an unrecognized digest algorithm is refused, not assumed to be sha256", () => {
+    const dir = freshDir();
+    const { report } = makeReport();
+    writeEvidenceBundle(report, dir);
+    tamperManifest(dir, (m) => ({ ...m, algorithm: "sha1" as unknown as "sha256" }));
+    const r = verifyEvidenceBundle(dir);
+    expect(r.ok).toBe(false);
+    expect(r.errors.some((e) => /^unrecognized digest algorithm "sha1"/.test(e))).toBe(true);
+  });
+
+  it("V-5: an ABSENT algorithm field is refused — the verifier never fills in a default", () => {
+    const dir = freshDir();
+    const { report } = makeReport();
+    writeEvidenceBundle(report, dir);
+    tamperManifest(dir, (m) => {
+      const { algorithm: _drop, ...rest } = m;
+      return rest as BundleManifest;
+    });
+    const r = verifyEvidenceBundle(dir);
+    expect(r.ok).toBe(false);
+    expect(r.errors.some((e) => /^unrecognized digest algorithm undefined/.test(e))).toBe(true);
+  });
+
+  it("V-4: a bundleFormatVersion this verifier does not implement is refused", () => {
+    const dir = freshDir();
+    const { report } = makeReport();
+    writeEvidenceBundle(report, dir);
+    tamperManifest(dir, (m) => ({ ...m, bundleFormatVersion: "2" }));
+    const r = verifyEvidenceBundle(dir);
+    expect(r.ok).toBe(false);
+    expect(r.errors.some((e) => /^unsupported bundleFormatVersion "2"/.test(e))).toBe(true);
+  });
+
+  it("V-2 (report.json): a duplicate key in the hash-covered report is still named", () => {
+    const dir = freshDir();
+    const { report } = makeReport();
+    writeEvidenceBundle(report, dir);
+    // Rewrite report.json with a duplicate key AND re-manifest it so the byte
+    // hash matches — isolates the strict-parse check from the hash check.
+    const reportPath = join(dir, "report.json");
+    const dup = readFileSync(reportPath, "utf-8").replace(
+      `"targetName":`,
+      `"targetName": "someone-else",\n  "targetName":`
+    );
+    writeFileSync(reportPath, dup);
+    tamperManifest(dir, (m) => {
+      const { createHash } = require("node:crypto") as typeof import("node:crypto");
+      const buf = readFileSync(reportPath);
+      const files = m.files.map((f) =>
+        f.path === "report.json"
+          ? { ...f, sha256: createHash("sha256").update(buf).digest("hex"), bytes: buf.byteLength }
+          : f
+      );
+      const meta = {
+        bundleFormatVersion: m.bundleFormatVersion,
+        algorithm: m.algorithm,
+        createdAt: m.createdAt,
+        targetName: m.targetName,
+        controlSetVersion: m.controlSetVersion,
+      };
+      return { ...m, files, rootHash: computeRootHash(meta, files) };
+    });
+    const r = verifyEvidenceBundle(dir);
+    expect(r.ok).toBe(false);
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0]).toMatch(/^report\.json contains a duplicate object key "targetName"/);
+  });
+
+  it("createdAt override is honoured by the writer (reproducible vectors) and covered by the root hash", () => {
+    const dir = freshDir();
+    const { report } = makeReport();
+    const m = writeEvidenceBundle(report, dir, { createdAt: "2026-09-25T00:00:00.000Z" });
+    expect(m.createdAt).toBe("2026-09-25T00:00:00.000Z");
+    expect(verifyEvidenceBundle(dir).ok).toBe(true);
+  });
+});
