@@ -2,7 +2,7 @@
 task: mlassure 1.0 course — M5 release hygiene, M6 custody SPEC + conformance vectors, M7 Proof-of-Control alignment
 slug: mlassure-1-0-course
 phase: climbing
-progress: 18/24
+progress: 21/24
 mode: algorithm
 started: 2026-09-25T07:30:00Z
 updated: 2026-09-25T08:10:00Z
@@ -1187,7 +1187,7 @@ The pattern tag on a control is a vocabulary assignment. M3f makes each assignme
 - [x] ISC-M5-3: `.github/workflows/ci.yml` runs `bun install --frozen-lockfile`, `bun run typecheck`, `bun test` on push + PR; integration tests skip cleanly without `ANTHROPIC_API_KEY`. Falsifier: read-back + local `bun test` with the key unset exits 0. — evidence: .github/workflows/ci.yml read back; `bun test` no key: 220 pass 3 skip 0 fail
 - [x] ISC-M5-4: `SECURITY.md` states reporting path and the bundle-at-rest warning. Falsifier: Read. — evidence: SECURITY.md 35 lines, README warning quoted verbatim
 - [x] ISC-M5-5: README carries a license badge, a maintenance-posture line ("single maintainer, best-effort"), and its Status table marks M4 post-1.0 with the reason. Falsifier: grep. — evidence: README: badges line 3, Maintenance posture section, M4 row post-1.0
-- [ ] ISC-M5-6: tag `v0.4.0` exists on the 0.4.0 commit and is pushed alongside the existing tags. Falsifier: `git ls-remote --tags origin`.
+- [x] ISC-M5-6: tag `v0.4.0` exists on the 0.4.0 commit and is pushed alongside the existing tags. Falsifier: `git ls-remote --tags origin`. — evidence: git ls-remote --tags origin shows v0.4.0 at e148658
 
 ## M6 Criteria (custody chain SPEC + conformance vectors, 0.5.0)
 
@@ -1210,8 +1210,8 @@ The pattern tag on a control is a vocabulary assignment. M3f makes each assignme
 
 ## Run Criteria (bookkeeping)
 
-- [ ] ISC-RUN-1: branch pushed, PR open against `main` with the CHANGE/VERIFY summary. Falsifier: `gh pr view`.
-- [ ] ISC-RUN-2: Linear: parent issue "mlassure 1.0 course" created linking BUI-62/68/63/64; BUI-62 + BUI-68 moved to In Progress with resume comments; blockers listed in the parent. Falsifier: `get_issue`.
+- [x] ISC-RUN-1: branch pushed, PR open against `main` with the CHANGE/VERIFY summary. Falsifier: `gh pr view`. — evidence: PR #2 https://github.com/joseruiz1571/mlassure/pull/2; CI run 36134274184 success
+- [x] ISC-RUN-2: Linear: parent issue "mlassure 1.0 course" created linking BUI-62/68/63/64; BUI-62 + BUI-68 moved to In Progress with resume comments; blockers listed in the parent. Falsifier: `get_issue`. — evidence: BUI-108 created (parent, links 62/68/63/64/69); BUI-62 + BUI-68 In Progress with resume comments; blockers in BUI-108 comment
 - [ ] ISC-RUN-3: independent second look (Max, read-only) on SPEC.md + docs/proof-of-control.md, findings dispositioned in Decisions. Falsifier: Decisions row.
 - [ ] ISC-RUN-4: blockers list delivered in the final message and mirrored in the Linear parent. Falsifier: both present.
 - [ ] ISC-RUN-5: `~/code/mlassure` working tree clean on the feature branch at close. Falsifier: `git status`.
@@ -1220,3 +1220,12 @@ The pattern tag on a control is a vocabulary assignment. M3f makes each assignme
 
 - M8 provider generalization shape: a second collector interface per target family vs. a generic `EvidenceProvider` keyed by collector name. Jose's call.
 - Whether the PoC control family targets a single evidence token, a token stream, or the conformance statement (C10.1.7 machine-readable statement — format not yet defined by the WG).
+
+## Decisions (1.0 course, 2026-09-25)
+
+- 2026-09-25 (direction): 1.0 = spec'd, interoperable, independently verifiable custody chain positioned against Proof-of-Control; M4 live AWS → post-1.0. Grounds in `## 1.0 Roadmap`. Alternative considered and rejected for this run: building M8 (provider generalization + PoC control family) first — it needs Jose's call on the provider shape and would have shipped an architecture change unreviewed overnight; designed instead, built next session.
+- 2026-09-25 (vector layout): `EXPECTED.json` sits BESIDE each negative bundle (`negative/<name>.EXPECTED.json`), not inside it — inside, it would itself be a V-12 unaccounted file and break the one-fault property. Proposed by the vectors delegate; adopted; SPEC §7 updated to match.
+- 2026-09-25 (gitignore trap, caught before commit): `.gitignore`'s `bundles/` and `.DS_Store` rules would have silently dropped every conformance vector from the commit while the test suite stayed green locally. Fixed with ordered re-include rules; proven with `git check-ignore -v` and `git ls-files`. Learned: a fixture tree that shares a name with a gitignored output path needs an explicit re-include and a tracked-file probe, not just a green local test.
+- 2026-09-25 (delegates): three dispatches — `hygiene` (opus) delivered in full; `vectors` (opus) and `max-review` (fable) both died on the account session limit mid-flight. `vectors` had already written a complete generator script; finished inline (test, README, SPEC alignment, run, determinism proof). Second look re-dispatched cross-vendor to Forge (audit mode) so it does not draw on the same limit; disposition row below.
+- 2026-09-25 (hex case): SPEC first said the verifier compares digests case-insensitively; the code compared bytes exactly, so uppercase hex would have failed as a misleading V-9 "hash mismatch". Resolved by making lowercase the rule (V-7 violation with a clear message) in code and SPEC — the writer never emitted uppercase, so no 0.4.0 bundle is affected.
+- 2026-09-25 (ajv): the repo's ajv default export is draft-07; a 2020-12 schema needs `ajv/dist/2020.js`. Gotcha recorded here for the next schema.
