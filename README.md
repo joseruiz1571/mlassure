@@ -106,7 +106,7 @@ The image never bakes in `ANTHROPIC_API_KEY` — no build `ARG`, no `ENV` with a
 
 ## Custody chain
 
-The bundle format is specified on its own in [`SPEC.md`](SPEC.md), with a machine-readable manifest schema (`fixtures/schemas/bundle-manifest.schema.json`) and conformance vectors in [`fixtures/bundles/`](fixtures/bundles/README.md): one positive bundle and fifteen single-fault negatives, each of which must be rejected *for its stated reason*. How the format lines up against LF Decentralized Trust's Proof-of-Control standard — and why it is Tier 2, not Proof-of-Control — is in [`docs/proof-of-control.md`](docs/proof-of-control.md).
+The bundle format is specified on its own in [`SPEC.md`](SPEC.md), with a machine-readable manifest schema (`fixtures/schemas/bundle-manifest.schema.json`) and conformance vectors in [`fixtures/bundles/`](fixtures/bundles/README.md): one positive bundle and seventeen single-fault negatives, each of which must be rejected *for its stated reason*. How the format lines up against LF Decentralized Trust's Proof-of-Control standard — and why it is Tier 2, not Proof-of-Control — is in [`docs/proof-of-control.md`](docs/proof-of-control.md).
 
 Every assessment run can emit a tamper-evident evidence bundle:
 

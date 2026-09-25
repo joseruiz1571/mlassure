@@ -2,10 +2,10 @@
 task: mlassure 1.0 course — M5 release hygiene, M6 custody SPEC + conformance vectors, M7 Proof-of-Control alignment
 slug: mlassure-1-0-course
 phase: climbing
-progress: 21/24
+progress: 22/24
 mode: algorithm
 started: 2026-09-25T07:30:00Z
-updated: 2026-09-25T08:10:00Z
+updated: 2026-09-25T12:45:00Z
 project: mlassure
 principal_stated_goal: "pick up mlassure, chart a course forward to 1.0 within the context of my other relevant work, im going to bed, don't stop to ask for permissions, push ahead as much as possible, leave me a list of blockers i need to help with, you have 4 hours to reflect, pick and direction, polan out the work, and move forward, the linux foundaiton ltds proof of control work and repository is really relevant here"
 principal_stated_goal_source: prompt
@@ -1212,7 +1212,7 @@ The pattern tag on a control is a vocabulary assignment. M3f makes each assignme
 
 - [x] ISC-RUN-1: branch pushed, PR open against `main` with the CHANGE/VERIFY summary. Falsifier: `gh pr view`. — evidence: PR #2 https://github.com/joseruiz1571/mlassure/pull/2; CI run 36134274184 success
 - [x] ISC-RUN-2: Linear: parent issue "mlassure 1.0 course" created linking BUI-62/68/63/64; BUI-62 + BUI-68 moved to In Progress with resume comments; blockers listed in the parent. Falsifier: `get_issue`. — evidence: BUI-108 created (parent, links 62/68/63/64/69); BUI-62 + BUI-68 In Progress with resume comments; blockers in BUI-108 comment
-- [ ] ISC-RUN-3: independent second look (Max, read-only) on SPEC.md + docs/proof-of-control.md, findings dispositioned in Decisions. Falsifier: Decisions row.
+- [x] ISC-RUN-3: independent second look (Max, read-only) on SPEC.md + docs/proof-of-control.md, findings dispositioned in Decisions. Falsifier: Decisions row. — evidence: Max review 15 findings, all dispositioned in Decisions row above; Forge skipped for cause (no codex CLI)
 - [ ] ISC-RUN-4: blockers list delivered in the final message and mirrored in the Linear parent. Falsifier: both present.
 - [ ] ISC-RUN-5: `~/code/mlassure` working tree clean on the feature branch at close. Falsifier: `git status`.
 
@@ -1229,3 +1229,5 @@ The pattern tag on a control is a vocabulary assignment. M3f makes each assignme
 - 2026-09-25 (delegates): three dispatches — `hygiene` (opus) delivered in full; `vectors` (opus) and `max-review` (fable) both died on the account session limit mid-flight. `vectors` had already written a complete generator script; finished inline (test, README, SPEC alignment, run, determinism proof). Second look re-dispatched cross-vendor to Forge (audit mode) so it does not draw on the same limit; disposition row below.
 - 2026-09-25 (hex case): SPEC first said the verifier compares digests case-insensitively; the code compared bytes exactly, so uppercase hex would have failed as a misleading V-9 "hash mismatch". Resolved by making lowercase the rule (V-7 violation with a clear message) in code and SPEC — the writer never emitted uppercase, so no 0.4.0 bundle is affected.
 - 2026-09-25 (ajv): the repo's ajv default export is draft-07; a 2020-12 schema needs `ajv/dist/2020.js`. Gotcha recorded here for the next schema.
+- 2026-09-25 (Forge unavailable on this machine): the cross-vendor audit dispatch went idle without a report; `which codex` → not found, so the Forge agent (which shells out to `codex exec`) cannot run here at all. Reported FAILED per the liveness contract; second look re-dispatched in-family (Max) after the account limit reset. Surfaced to Jose as a system blocker: install the OpenAI codex CLI or accept that the cross-vendor lane is dark on this box.
+- 2026-09-25 (second look, Max, in-family, read-only — 0 CRITICAL / 3 MAJOR / 8 MINOR / 4 NIT; verdict "safe on a public branch tonight; fix 1–3 before merge"): ALL 15 findings adopted, 14 as diffs in this commit, 1 partially. Majors: (1) the Tier-3 path was an overclaim for CC-2 under C8's current text (CA-rooted identity is below the line) → §5 now registers M9 as a NEW claim CC-4 (time-anchoring, Tier 3) and leaves CC-2 at Tier 2 pending Appendix D issue 6; one-liner reworded. (2) "the phrase appears only in this analysis" was literally false (SPEC, README, source comments) → reworded as analysis/cross-reference/non-claim; 8.1.4 → partial (no claims review). (3) §4.1 escaping rules were under-specified for non-ASCII targetName → exact escape set, lowercase hex, lone surrogates, NFC scope stated. Minors: early returns contradicted "never stop at the first" → V-1/2/3/6 marked terminal in SPEC AND code fixed so V-6 preserves prior violations; createdAt clause marked Tier 1; "signed" → "when signed"; 8.1.5/8.1.6/8.1.8 → n/a (vacuous without a Tier 3 claim); two missing error prefixes added; `bytes` not in pre-image stated, integer everywhere (schema, SPEC, code); NFC-at-verification sentence; obs 4 reframed as a worked instance of Appendix D issue 6, obs 1 gains the v0.1.4 header label, obs 3 cites "(or equivalent chaining)"; header dates corrected to commit 22c7b62 / 2026-09-18 (reviewer said 09-19; git says 09-18); C7-by-analogy sentence added; SPEC status dates fixed. Partial: added `missing-roothash` (V-3) and `duplicate-path` (V-7) vectors (17 negatives now); a size-mismatch vector was NOT added because it is unreachable — a matching SHA-256 with a different byte length is a hash collision — and SPEC now says so instead. Unverified item carried in the doc verbatim: whether Rekor's public instance has monitors independent of its operator. Comment draft revised to match.

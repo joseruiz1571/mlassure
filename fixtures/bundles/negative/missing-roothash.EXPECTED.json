@@ -1,0 +1,5 @@
+{
+  "check": "V-3",
+  "errorPattern": "^manifest\\.json is missing \"files\" or \"rootHash\"",
+  "description": "The rootHash member removed entirely. Without a stored commitment there is nothing to recompute against; this is not a custody manifest at all, and V-3 is terminal."
+}

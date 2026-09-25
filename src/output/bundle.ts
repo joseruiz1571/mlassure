@@ -297,8 +297,8 @@ function entryViolation(entry: unknown, index: number, seen: Set<string>): strin
     // pretending to be one (Proof-of-Control canonical-form rule 6).
     return `manifest files[${index}] ("${p}") has no valid sha256 (64 lowercase hex)`;
   }
-  if (typeof e["bytes"] !== "number") {
-    return `manifest files[${index}] ("${p}") has no numeric byte size`;
+  if (typeof e["bytes"] !== "number" || !Number.isInteger(e["bytes"]) || e["bytes"] < 0) {
+    return `manifest files[${index}] ("${p}") has no numeric byte size (non-negative integer)`;
   }
   const norm = p.normalize("NFC");
   if (seen.has(norm)) {
@@ -379,11 +379,16 @@ export function verifyEvidenceBundle(dir: string): VerifyResult {
   // proof of tampering — without this check, gutting a bundle and dropping
   // in a trivial manifest verifies "OK — 0 files" (hunter finding, M3g).
   if (manifest.files.length === 0) {
+    // Terminal, but never discards what V-4/V-5 already found (second-look
+    // finding, M6): the returned list carries every violation seen so far.
     return {
       ok: false,
       checkedFiles: 0,
       rootHash: null,
-      errors: [`manifest lists zero files — the writer always bundles report.json; this manifest was not produced by mlassure`],
+      errors: [
+        ...errors,
+        `manifest lists zero files — the writer always bundles report.json; this manifest was not produced by mlassure`,
+      ],
     };
   }
 

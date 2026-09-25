@@ -1,6 +1,6 @@
 # mlassure custody bundle — format specification
 
-**Format:** `bundleFormatVersion` `"1"` · **Status:** stable since mlassure 0.3.0 (M3g, 2026-07-22); verification checks V-2, V-4, V-5 added in 0.5.0 without changing the written format · **Reference implementation:** `src/output/bundle.ts` (writer + verifier), `src/cli/index.ts` (`assess --bundle`, `verify-bundle`) · **Conformance vectors:** `fixtures/bundles/` · **License:** Apache-2.0
+**Format:** `bundleFormatVersion` `"1"` · **Status:** stable since milestone M3g (live-verified 2026-07-22, shipped in 0.3.0 on 2026-08-13); verification checks V-2, V-4, V-5 added in 0.5.0 without changing the written format · **Reference implementation:** `src/output/bundle.ts` (writer + verifier), `src/cli/index.ts` (`assess --bundle`, `verify-bundle`) · **Conformance vectors:** `fixtures/bundles/` · **License:** Apache-2.0
 
 This document is the custody bundle format on its own, separated from the tool that produces it, so that a second implementation can write or verify a bundle without reading mlassure's source. Where this document and the reference implementation disagree, that is a bug in one of them; file it.
 
@@ -121,7 +121,7 @@ Present only when the same run produced them. Bytes are whatever the run wrote; 
 | `files[]` | array | one entry per covered file; MUST be non-empty (V-6); MUST list `report.json` (V-8); entries MUST NOT name `manifest.json` or a signature artifact (V-7) |
 | `files[].path` | string | relative, `/`-separated, NFC; MUST NOT start with `/` or `~`, contain `..` or `\` (V-7); unique within the manifest (V-7) |
 | `files[].sha256` | string | 64 **lowercase** hex characters (V-7). Uppercase is a violation, not a case-fold: a digest that must be normalized before comparison is two byte strings pretending to be one. |
-| `files[].bytes` | number | byte length of the file |
+| `files[].bytes` | integer ≥ 0 | byte length of the file. **Not** in the root-hash pre-image (§4.1 commits to path and digest only); checked against the file by V-9 as a secondary sanity field — a matching SHA-256 with a different length would be a hash collision, so `bytes` never carries the verdict on its own. |
 | `rootHash` | string | 64 lowercase hex; see §4.1 |
 
 Any other member is not part of format 1. A verifier MAY ignore unknown members but MUST NOT let them influence the verdict.
@@ -139,7 +139,7 @@ rootHash  = SHA-256( UTF-8( JSON.stringify( [
              ] ) ) )   rendered as 64 lowercase hex characters
 ```
 
-`JSON.stringify` here means the compact ECMAScript serialization with no whitespace, keys in array order (there are no objects, so key ordering never arises), strings escaped per ECMA-262 `JSON.stringify` (which for the ASCII paths and hex digests the writer produces coincides with RFC 8785). The array encoding is injective, so no delimiter ambiguity exists for hostile path strings.
+`JSON.stringify` here means the compact ECMAScript serialization: no whitespace; arrays only (there are no objects, so key ordering never arises); no numbers anywhere in the pre-image, so number formatting never arises. **String escaping, stated for a non-JavaScript implementer** (this matters because `targetName` and `controlSetVersion` are operator-supplied and not guaranteed ASCII): escape exactly `"` as `\"`, `\` as `\\`, and the C0 controls U+0000–U+001F — using the short forms `\b \f \n \r \t` where they exist and `\u00xx` with **lowercase** hex otherwise; a lone (unpaired) surrogate is escaped as `\udxxx` lowercase; every other code point, including all non-ASCII, is emitted raw as UTF-8. This is ECMA-262 `JSON.stringify` (well-formed variant) and coincides with RFC 8785 §3.2.2.2 for strings. Metadata strings are **not** NFC-normalized; only `path` is. The array encoding is injective, so no delimiter ambiguity exists for hostile path strings.
 
 The sort is stated as UTF-16 code-unit order so that a non-JavaScript implementation reproduces it exactly; for ASCII paths it coincides with byte order and Unicode code-point order.
 
@@ -151,27 +151,28 @@ The writer MUST write `manifest.json` **last**, after every covered file has bee
 
 ## 5. Verification procedure
 
-A verifier MUST run every applicable check and report **all** violations found; it MUST NOT stop at the first. The verdict is `ok` only when the violation list is empty ("aggregate fail-loud"). A bundle with zero violations and `checkedFiles = N` means: N manifested files exist, hash and size as stated; the manifest is internally consistent; the metadata agrees with the covered report; and nothing else is in the directory.
+A verifier MUST report **all** violations it can determine and MUST NOT stop at the first *determinable* one. Four checks are **terminal** because nothing after them is determinable: V-1 (no manifest), V-2 (manifest not parseable, or duplicate key), V-3 (not a manifest shape), V-6 (no files to check). A terminal check still returns every violation found before it (V-4/V-5 precede V-6). The verdict is `ok` only when the violation list is empty ("aggregate fail-loud"). A bundle with zero violations and `checkedFiles = N` means: N manifested files exist, hash and size as stated; the manifest is internally consistent; the metadata agrees with the covered report; and nothing else is in the directory.
 
 The checks, with the error-string prefix the reference verifier emits for each. The prefixes are the contract the conformance vectors assert against (§7): a vector rejected for a *different* reason than the one it was written to exercise is not a pass.
 
 | ID | Check | Reference error prefix |
 | --- | --- | --- |
-| V-1 | `manifest.json` exists | `no manifest.json in` |
-| V-2 | `manifest.json` parses as JSON with **no duplicate object key** at any depth. Last-wins resolution is forbidden: one manifest must mean one thing to every reader. The same rule applies to `report.json` when it is read for V-11. | `manifest.json contains a duplicate object key` · `report.json contains a duplicate object key` · `manifest.json is not valid JSON` |
-| V-3 | manifest has `files` (array) and `rootHash` (string) | `manifest.json is missing "files" or "rootHash"` |
+| V-1 | the bundle directory exists and `manifest.json` exists in it *(terminal)* | `bundle directory does not exist:` · `no manifest.json in` |
+| V-2 | *(terminal)* `manifest.json` parses as JSON with **no duplicate object key** at any depth. Last-wins resolution is forbidden: one manifest must mean one thing to every reader. The same rule applies to `report.json` when it is read for V-11. | `manifest.json contains a duplicate object key` · `report.json contains a duplicate object key` · `manifest.json is not valid JSON` |
+| V-3 | *(terminal)* manifest has `files` (array) and `rootHash` (string) | `manifest.json is missing "files" or "rootHash"` |
 | V-4 | `bundleFormatVersion` is one this verifier implements (`"1"`) | `unsupported bundleFormatVersion` |
 | V-5 | `algorithm` is present and is one this verifier implements (`"sha256"`); never assumed | `unrecognized digest algorithm` |
-| V-6 | `files` is non-empty (the writer always bundles `report.json`) | `manifest lists zero files` |
-| V-7 | each `files[]` entry is well-formed: object; non-empty path string; path does not escape the bundle; path does not name the manifest or a signature artifact; 64-hex `sha256`; numeric `bytes`; no duplicate paths | `manifest files[N] …` (several sub-forms; see the vectors) |
+| V-6 | *(terminal)* `files` is non-empty (the writer always bundles `report.json`) | `manifest lists zero files` |
+| V-7 | each `files[]` entry is well-formed: object; non-empty path string; path does not escape the bundle; path does not name the manifest or a signature artifact; 64 lowercase-hex `sha256`; non-negative integer `bytes`; no duplicate paths | `manifest files[N] …` (several sub-forms; see the vectors) |
 | V-8 | `files` lists `report.json` | `manifest does not list report.json` |
 | V-9 | every manifested file exists, is a regular readable file, its SHA-256 equals the entry's, and its byte length equals `bytes` | `missing file listed in manifest:` · `unreadable file listed in manifest:` · `hash mismatch:` · `size mismatch:` |
 | V-10 | `rootHash` equals the §4.1 recomputation over the manifest's own metadata and entries (skipped when any V-7 violation exists, since those already force failure) | `rootHash mismatch:` |
 | V-11 | manifest `targetName` and `controlSetVersion` equal the values inside the hash-covered `report.json` (an attacker who recomputes `rootHash` must also alter `report.json`, which V-9 then catches) | `manifest targetName … disagrees with report.json` · `manifest controlSetVersion … disagrees with report.json` |
-| V-12 | completeness of the directory: every regular file on disk is either manifested or one of the exempt signature artifacts by exact name (`manifest.json`, `manifest.sig.bundle`, `manifest.json.sig`, `cosign.pub`); no symlinks; no empty directories; no other filesystem entry kinds; no unreadable entries | `unaccounted file in bundle:` · `symlink inside bundle:` · `empty directory inside bundle:` · `unsupported filesystem entry inside bundle:` · `unreadable directory inside bundle:` |
+| V-12 | completeness of the directory: every regular file on disk is either manifested or one of the exempt signature artifacts by exact name (`manifest.json`, `manifest.sig.bundle`, `manifest.json.sig`, `cosign.pub`); no symlinks; no empty directories; no other filesystem entry kinds; no unreadable entries | `unaccounted file in bundle:` · `symlink inside bundle:` · `empty directory inside bundle:` · `unsupported filesystem entry inside bundle:` · `unreadable directory inside bundle:` · `unreadable entry inside bundle:` |
 
 Notes for implementers:
 
+- **Unicode normalization at verification.** The verifier NFC-normalizes both manifest entry paths and the names it reads from the filesystem before comparing them, before the completeness check, and before recomputing the root hash. A verifier that compares raw bytes diverges on NFD filesystems (macOS) for any non-ASCII path.
 - Verification MUST hash the bytes on disk. Re-serializing JSON to re-hash is wrong: key order and whitespace are not canonical in format 1, and the digest is over bytes.
 - Manifest entries are **untrusted input**. The writer only ever emits clean relative paths; an absolute path, `..`, or `\` in an entry is proof of tampering *and* an attempt to point verification outside the bundle. A verifier MUST reject such an entry before touching the filesystem with it.
 - There is no allowlist for "junk" files (`.DS_Store`, `Thumbs.db`). An allowlist is an attacker's hiding spot. The only exemptions are the four signature-artifact names, exact-match.

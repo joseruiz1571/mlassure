@@ -402,6 +402,30 @@ const VECTORS: Vector[] = [
       }),
   },
   {
+    name: "missing-roothash",
+    check: "V-3",
+    errorPattern: '^manifest\\.json is missing "files" or "rootHash"',
+    description:
+      "The rootHash member removed entirely. Without a stored commitment there is nothing to recompute against; this is not a custody manifest at all, and V-3 is terminal.",
+    apply: (dir) =>
+      editManifestOnly(dir, (manifest) => {
+        delete (manifest as { rootHash?: unknown }).rootHash;
+      }),
+  },
+  {
+    name: "duplicate-path",
+    check: "V-7",
+    errorPattern: '^manifest files\\[\\d+\\] duplicates path "narrative\\.md"',
+    description:
+      "The narrative.md entry listed twice (identical digest and size), rootHash re-sealed over the doubled entry list. Duplicate entries inflate the verified-file count; the second occurrence is a shape violation before any file is read.",
+    apply: (dir) =>
+      reseal(dir, (manifest) => {
+        const entry = manifest.files.find((f) => f.path === "narrative.md");
+        if (entry === undefined) throw new Error("duplicate-path: narrative.md not manifested");
+        manifest.files.push({ ...entry });
+      }),
+  },
+  {
     name: "tampered-file",
     check: "V-9",
     errorPattern: "^hash mismatch: report\\.json",

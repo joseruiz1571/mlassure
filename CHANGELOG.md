@@ -13,11 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `SPEC.md`: the custody bundle format (format `"1"`) as a standalone specification — layout, manifest members, root-hash construction, write-order guarantee, the numbered verification checks V-1…V-12 with their error prefixes, and what the format does not prove.
 - `fixtures/schemas/bundle-manifest.schema.json`: machine-readable manifest schema; the writer's own output is validated against it in the test suite.
-- `fixtures/bundles/`: conformance vectors — 1 positive bundle and 15 negative bundles, each negative carrying an `EXPECTED.json` naming the single check it exercises and the error pattern a conforming verifier must produce. `src/output/bundle.vectors.test.ts` fails any negative rejected for the wrong reason. Generator: `scripts/make-bundle-vectors.ts` (byte-stable regeneration).
+- `fixtures/bundles/`: conformance vectors — 1 positive bundle and 17 negative bundles, each negative carrying an `EXPECTED.json` naming the single check it exercises and the error pattern a conforming verifier must produce. `src/output/bundle.vectors.test.ts` fails any negative rejected for the wrong reason. Generator: `scripts/make-bundle-vectors.ts` (byte-stable regeneration).
 - `docs/proof-of-control.md`: requirement-level crosswalk of the custody bundle against LF Decentralized Trust's Proof-of-Control v1.0 draft (C7, C8.1, C10), with tier placement (Tier 2), a C10.2-shaped trust-assumption disclosure, and the path to a Tier 3 custody claim.
 - `verify-bundle` now rejects a `manifest.json` (or `report.json`) containing a duplicate object key at any depth, naming the key and path, instead of resolving last-wins like `JSON.parse` (check V-2; `src/output/strict-json.ts`).
 - `verify-bundle` now refuses a manifest whose `algorithm` is absent or not `sha256` (V-5) and a `bundleFormatVersion` it does not implement (V-4), rather than assuming either.
 - `writeEvidenceBundle` accepts a `createdAt` override for reproducible fixture generation.
+- Verifier: the terminal zero-files check now returns the V-4/V-5 violations found before it instead of discarding them; `files[].bytes` must be a non-negative integer (was: any number).
 - Release hygiene: `LICENSE` (Apache-2.0), `SECURITY.md`, GitHub Actions CI (typecheck + test), README badges and maintenance-posture line.
 
 ### Changed
