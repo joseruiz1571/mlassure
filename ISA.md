@@ -2,10 +2,10 @@
 task: mlassure 1.0 course — M8 target generalization (generic EvidenceProvider) + Proof-of-Control control family
 slug: mlassure-1-0-course
 phase: climbing
-progress: 52/52
+progress: 61/62
 mode: algorithm
 started: 2026-09-25T07:30:00Z
-updated: 2026-09-27T21:30:00Z
+updated: 2026-09-27T22:00:00Z
 project: mlassure
 principal_stated_goal: "pick up mlassure, chart a course forward to 1.0 within the context of my other relevant work, im going to bed, don't stop to ask for permissions, push ahead as much as possible, leave me a list of blockers i need to help with, you have 4 hours to reflect, pick and direction, polan out the work, and move forward, the linux foundaiton ltds proof of control work and repository is really relevant here"
 principal_stated_goal_source: prompt
@@ -1300,6 +1300,19 @@ Read for this design: `schema/poc-evidence.schema.json`, `schema/README.md`, `ch
 - [x] ISC-M8b-14: README shows the PoC run end to end and `docs/proof-of-control.md` says what M8b assesses and what it does not; neither claims mlassure "has" Proof-of-Control (1.0 anti-claim 1). Falsifier: grep. (after: ISC-M8b-11) — evidence: README "Assessing Proof-of-Control evidence"; `docs/proof-of-control.md` §6 assessed / not-assessed table
 - [x] ISC-M8b-15: full suite green, typecheck clean, branch stacked on M8a, PR open with CI green. Falsifier: `bun test`, `gh pr checks`. (after: ISC-M8b-14) — evidence: PR #4, head 945c063; CI run 36350708189: 331 pass, 4 skip, 0 fail, 335 tests (the 4th skip is the cosign test, which CI cannot run)
 
+## M8b Criteria (added by the cross-vendor audit)
+
+- [x] ISC-M8b-16: PoC-7.7.3 checks digests at any depth (nested objects, arrays, token top level) and its rationale claims only what it checked. Falsifier: untagged digests at `poc_claims.ext.inner_hash`, `poc_claims.input_hashes[0]` and top-level `payload_hash` each give `not-satisfied` naming the path. — evidence: `poc-evidence.test.ts` "7.7.3 finds digests by name at any depth…"; main-loop probe: nested and top-level untagged digests give not-satisfied naming the path
+- [x] ISC-M8b-17: PoC-7.7.3 has no vacuous pass: zero digests found gives `insufficient-evidence`. Falsifier: a record with `alg` and no digest claims. — evidence: `poc-evidence.test.ts` "7.7.3 has no vacuous pass"
+- [x] ISC-M8b-18: no number loses information between the raw text and a verdict: `step_index` is accepted only in plain decimal digits and is reported in its written form; a number that does not convert exactly makes PoC-7.7.1 `insufficient-evidence`. Falsifier: `1.0`, `1e0`, `1e-324`, `9007199254740993`. — evidence: `poc-evidence.test.ts` step_index and lossy-number tests; main-loop probe: `1e-324` gives insufficient-evidence on 7.7.1 and 7.6.2
+- [x] ISC-M8b-19: report wording follows the provider when the control set declares no family, and a nist-subset report still carries no `family` key. Falsifier: PoC controls with `family:` removed; the existing absence test unmodified. — evidence: `poc-outputs.test.ts` "PoC controls without family…"; absence test unmodified
+- [x] ISC-M8b-20: a target descriptor cannot make the provider read outside the descriptor's directory, symlinks included. Falsifier: `../` path, absolute path, symlink out. — evidence: `poc-evidence.test.ts` "cannot name a file outside the descriptor's directory…"; main-loop probe: `../`, absolute and symlink all refused
+- [x] ISC-M8b-21: blank lines are not records, and the count skipped is stated in the evidence. Falsifier: clean stream plus blank lines gets the clean stream's verdicts. — evidence: fixture `blank-lines.jsonl`; main-loop probe: verdicts equal the clean stream's
+- [x] ISC-M8b-22: `rawText` is what is stored, BOM included. Falsifier: bytes EF BB BF 7B 7D. — evidence: `poc-evidence.test.ts` "a UTF-8 byte-order mark stays in rawText…"
+- [x] ISC-M8b-23: the fixture matrix test enumerates streams from disk in both directions. Falsifier: a stream with no expectation fails the test. — evidence: `poc-evidence.test.ts` "the matrix and the streams on disk name the same set, in both directions"
+- [x] ISC-M8b-24: every `notAssessed` is still true after the fixes above, changed only by minimal factual additions, each listed before and after for the owner. Falsifier: Read against the code. — evidence: `git diff 8fab278..6ef1218 -- fixtures/controls/poc-c7-subset.yaml`: one sentence added to 7.7.1, one clause replaced in 7.7.3, nothing else. Left for the owner: the 7.7.3 intent still describes the narrower pre-fix scope, which is true but understates the check
+- [ ] ISC-M8b-25: the red team of `poc-c7-subset.yaml` (four lenses on the OpenAI flagship model, at the owner's request) is delivered to him as one ranked document with a steelman and the strongest counter-argument, outside the repo. Falsifier: Read.
+
 ## Decisions (M8b, 2026-09-27)
 
 - 2026-09-27 (`notAssessed`, not `note`): the build delegate proposed rendering each control's `note` to satisfy ISC-M8b-11. Rejected: SA-10's note is a maintainer's remark and would have appeared in SageMaker audit output. The unassessed remainder is its own optional field. The first build commit (098f5d1) landed on the rejected default before the redirect arrived; dd9bc52 corrects it and restores `note` handling to what `main` does.
@@ -1308,6 +1321,8 @@ Read for this design: `schema/poc-evidence.schema.json`, `schema/README.md`, `ch
 - 2026-09-27 (duplicate-key records under the other checks): a record with a duplicate key has two readings, so PoC-7.7.1, 7.7.3 and 7.6.2 answer `insufficient-evidence` for it and only PoC-7.7.5 answers `not-satisfied`. One fault, one failing control.
 - 2026-09-27 (pin): schema, vectors and requirement quotes are pinned to the standard's commit 22c7b62.
 - 2026-09-27 (dependencies): `ajv` moved from dev to runtime dependencies; format assertion is off, as in the standard's reference validator. `resolveJsonModule` is on so the schema ships inside the build.
+- 2026-09-27 (cross-vendor audit, Forge, read-only — 2 MAJOR / 5 MINOR / 2 NIT; verdict "concerns, fix first"): the audit helper could not run (it looks for the ISA in the assistant's work folder, and this ISA lives in the repo; the bundle would also have exceeded its size cap), so the auditor ran five scoped passes on the OpenAI model by hand and tagged each finding by who found it. Findings tagged as the auditor's own are in-family and are weighed as such. Both majors were confirmed by the main loop reading the code before any fix was briefed. Adopted as claims ISC-M8b-16 to -24: digest coverage and its overclaiming rationale (MAJOR), number written form lost in the strict parser (MAJOR), wording keyed on the control set only, descriptor path containment, blank lines as records, vacuous 7.7.3 pass, stale-prone matrix test, BOM stripped from `rawText`, rounded step numbers. Rebutted: the help-text change breaks byte-identity of `--help`; it was the owner's explicit call ("assess a target makes sense") and the M8 anti-claim is about assessment output. Deferred to the owner: the PoC-7.6.2 start-at-0 rule fails a rotated log window, which the intent states and is a wording and design question for his evaluation; `endpointName` as the shared key for the PoC issuer (already in fog). Deferred as a separate task, outside this PR: the bundle verifier discards every `report.json` parse failure except a duplicate key, so an unparseable report with recomputed hashes skips the metadata-binding check silently. That is pre-existing, lives in `bundle.ts`, and changing it changes verifier semantics the SPEC describes.
+- 2026-09-27 (1.0 anti-claim 1 read precisely): the audit noted README and CHANGELOG state a Tier 2 placement. That is the intended self-assessment from M7. The anti-claim forbids claiming Proof-of-Control or Tier 3, and using the name as a badge; it does not forbid stating Tier 2.
 
 ## Not yet verified (M8b)
 
