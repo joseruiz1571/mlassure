@@ -1,7 +1,8 @@
 import { describe, it, expect } from "bun:test";
 import { runAssessment, deriveCoverageConfidence } from "./assessment-runner.js";
 import type { LlmProvider, LlmCompletionResult } from "../llm/llm-provider.interface.js";
-import type { AwsProvider } from "../providers/aws-provider.interface.js";
+import { awsSageMakerProvider, type AwsProvider } from "../providers/aws-sagemaker.js";
+import type { EvidenceProvider } from "../providers/evidence-provider.interface.js";
 import type { ControlItem, ControlSet, AssessmentTarget, RawEvidence } from "../types.js";
 import { randomUUID } from "node:crypto";
 
@@ -14,8 +15,8 @@ const MOCK_TARGET: AssessmentTarget = {
   endpointName: "test-endpoint",
 };
 
-function makeProvider(overrides: Partial<AwsProvider> = {}): AwsProvider {
-  return {
+function makeProvider(overrides: Partial<AwsProvider> = {}): EvidenceProvider {
+  return awsSageMakerProvider({
     getModelRegistryEntry: async () => null,
     getModelCard: async () => null,
     getEndpointConfig: async () => null,
@@ -26,7 +27,7 @@ function makeProvider(overrides: Partial<AwsProvider> = {}): AwsProvider {
     getEndpointExecutionRole: async () => null,
     getCloudTrailEvents: async () => [],
     ...overrides,
-  };
+  });
 }
 
 function controlSetOf(control: ControlItem): ControlSet {

@@ -1,18 +1,18 @@
 ---
-task: mlassure 1.0 course — M5 release hygiene, M6 custody SPEC + conformance vectors, M7 Proof-of-Control alignment
+task: mlassure 1.0 course — M8 target generalization (generic EvidenceProvider) + Proof-of-Control control family
 slug: mlassure-1-0-course
-phase: complete
-progress: 24/24
+phase: climbing
+progress: 37/52
 mode: algorithm
 started: 2026-09-25T07:30:00Z
-updated: 2026-09-25T12:50:00Z
+updated: 2026-09-27T21:00:00Z
 project: mlassure
 principal_stated_goal: "pick up mlassure, chart a course forward to 1.0 within the context of my other relevant work, im going to bed, don't stop to ask for permissions, push ahead as much as possible, leave me a list of blockers i need to help with, you have 4 hours to reflect, pick and direction, polan out the work, and move forward, the linux foundaiton ltds proof of control work and repository is really relevant here"
 principal_stated_goal_source: prompt
 principal_stated_goal_signal: 1
 principal_stated_goal_locked: 2026-09-25T07:30:00Z
 context_sufficient: true
-prior_phase_note: "M0–M3g + 0.4.0 complete — see sections above. 2026-09-25: 1.0 course opened (sections at the end of this file)."
+prior_phase_note: "M0–M7 + 0.5.0 complete. 2026-09-27: M8 opened on Jose's call for shape (b), the generic EvidenceProvider (sections at the end of this file)."
 ---
 
 ## Problem
@@ -46,7 +46,7 @@ Running `mlassure assess --controls fixtures/controls/nist-subset.yaml --target 
 - TypeScript / Node 20+ compatible (bun runtime)
 - CLI interface: `mlassure assess --controls <yaml|json> --target <json>`
 - Evidence items are content-addressable: sha256 is computed from payload, not supplied externally
-- AwsProvider is an interface, not a class — fixture and live are separate implementations
+- The provider is an interface, not a class — fixture and live are separate implementations (since M8a the interface is the generic `EvidenceProvider`; `AwsProvider` is the SageMaker family's typed surface behind it)
 - No hardcoded paths; fixtures loaded via CLI `--target` flag or absolute path resolution
 
 ## Goal
@@ -1218,8 +1218,7 @@ The pattern tag on a control is a vocabulary assignment. M3f makes each assignme
 
 ## Not yet specified (1.0)
 
-- M8 provider generalization shape: a second collector interface per target family vs. a generic `EvidenceProvider` keyed by collector name. Jose's call.
-- Whether the PoC control family targets a single evidence token, a token stream, or the conformance statement (C10.1.7 machine-readable statement — format not yet defined by the WG).
+- (both 1.0 fog entries moved: the provider shape is decided, see `## M8`; the PoC target shape is carried in `## Not yet specified (M8)`.)
 
 ## Decisions (1.0 course, 2026-09-25)
 
@@ -1231,3 +1230,78 @@ The pattern tag on a control is a vocabulary assignment. M3f makes each assignme
 - 2026-09-25 (ajv): the repo's ajv default export is draft-07; a 2020-12 schema needs `ajv/dist/2020.js`. Gotcha recorded here for the next schema.
 - 2026-09-25 (Forge unavailable on this machine): the cross-vendor audit dispatch went idle without a report; `which codex` → not found, so the Forge agent (which shells out to `codex exec`) cannot run here at all. Reported FAILED per the liveness contract; second look re-dispatched in-family (Max) after the account limit reset. Surfaced to Jose as a system blocker: install the OpenAI codex CLI or accept that the cross-vendor lane is dark on this box.
 - 2026-09-25 (second look, Max, in-family, read-only — 0 CRITICAL / 3 MAJOR / 8 MINOR / 4 NIT; verdict "safe on a public branch tonight; fix 1–3 before merge"): ALL 15 findings adopted, 14 as diffs in this commit, 1 partially. Majors: (1) the Tier-3 path was an overclaim for CC-2 under C8's current text (CA-rooted identity is below the line) → §5 now registers M9 as a NEW claim CC-4 (time-anchoring, Tier 3) and leaves CC-2 at Tier 2 pending Appendix D issue 6; one-liner reworded. (2) "the phrase appears only in this analysis" was literally false (SPEC, README, source comments) → reworded as analysis/cross-reference/non-claim; 8.1.4 → partial (no claims review). (3) §4.1 escaping rules were under-specified for non-ASCII targetName → exact escape set, lowercase hex, lone surrogates, NFC scope stated. Minors: early returns contradicted "never stop at the first" → V-1/2/3/6 marked terminal in SPEC AND code fixed so V-6 preserves prior violations; createdAt clause marked Tier 1; "signed" → "when signed"; 8.1.5/8.1.6/8.1.8 → n/a (vacuous without a Tier 3 claim); two missing error prefixes added; `bytes` not in pre-image stated, integer everywhere (schema, SPEC, code); NFC-at-verification sentence; obs 4 reframed as a worked instance of Appendix D issue 6, obs 1 gains the v0.1.4 header label, obs 3 cites "(or equivalent chaining)"; header dates corrected to commit 22c7b62 / 2026-09-18 (reviewer said 09-19; git says 09-18); C7-by-analogy sentence added; SPEC status dates fixed. Partial: added `missing-roothash` (V-3) and `duplicate-path` (V-7) vectors (17 negatives now); a size-mismatch vector was NOT added because it is unreachable — a matching SHA-256 with a different byte length is a hash collision — and SPEC now says so instead. Unverified item carried in the doc verbatim: whether Rekor's public instance has monitors independent of its operator. Comment draft revised to match.
+
+## M8 (opened 2026-09-27)
+
+**Decision (Jose, 2026-09-27, verbatim "b"):** provider generalization takes shape (b), one generic `EvidenceProvider` keyed by collector name, with per-family collector catalogs and control sets. M8 lands as two stacked PRs so the architecture change is reviewable on its own: **M8a** the behavior-preserving generalization, **M8b** the Proof-of-Control control family on top of it.
+
+## M8 Anti-claims
+
+- M8a changes no behavior for the SageMaker family: tool definitions, system prompt and initial message are byte-identical to the pre-change capture, and CLI output on both fixtures is identical.
+- The string-keyed dispatch never turns a YAML typo into a late or silent failure: an unknown collector name aborts the run before any LLM call.
+- No push to `main`; each half lands as a branch + PR for Jose.
+- Bundle format stays "1"; no 0.5.0 bundle stops verifying.
+
+## M8a Criteria (generic EvidenceProvider)
+
+- [x] ISC-M8a-1: `src/providers/evidence-provider.interface.ts` declares `EvidenceProvider` (`family`, a collector catalog, `collect(name, target)`); the agent, runner and tools depend on it and nothing else; `deterministic-checks.ts` imports the SageMaker type only to compiler-check the collector names its two SageMaker checks use. Falsifier: `rg AwsProvider src` hits nothing in `agent.ts`, `assessment-runner.ts` or `src/tools/`. — evidence: `rg -l AwsProvider src`: aws-sagemaker.ts, fixture-provider.ts, deterministic-checks.ts (type import for the two SageMaker checks), three test files
+- [x] ISC-M8a-2: the SageMaker family keeps compile-time method checking behind an adapter, so a misspelled or missing collector inside the family is a type error. Falsifier: deleting one method from `FixtureProvider` fails `bun run typecheck`. — evidence: renaming `getKMSConfig` in FixtureProvider → TS2420 "incorrectly implements interface"; restored, typecheck clean
+- [x] ISC-M8a-3: parity against the captured baseline: tool defs + prompts snapshot sha256 `03e4bb61…` reproduces after the change; CLI scaffold output on model-clean and model-stale reproduces byte for byte. Falsifier: `shasum` of the re-run captures. — evidence: re-run captures hash to 03e4bb61…, beb0a968…, 5671c626…, equal to baseline; now also a test, `aws-sagemaker.test.ts` parity case against `fixtures/parity/sagemaker-llm-inputs.json`
+- [x] ISC-M8a-4: `runAssessment` preflight throws a named error listing every (control, collector) pair the provider does not offer, before any control is assessed or any LLM call is made. Falsifier: unit test with a counting LLM. — evidence: `evidence-provider.test.ts` "preflight lists every unknown (control, collector) pair": LLM calls 0, collector calls 0
+- [x] ISC-M8a-5: inherited object keys (`constructor`, `toString`, `__proto__`) are never collectors: dispatch rejects them and the agent loop answers "Unknown tool". Falsifier: unit test; the pre-change `name in EXECUTOR_MAP` accepted them. — evidence: `evidence-provider.test.ts` inherited-key tests (collectors, agent loop, control-id lookup); `main`'s executor used `name in EXECUTOR_MAP`
+- [x] ISC-M8a-6: generality is proven, not asserted: a second, non-SageMaker provider with its own collector names runs an assessment end to end with zero edits to agent, runner or tools. Falsifier: unit test using a toy family. — evidence: `evidence-provider.test.ts` toy-ledger family end to end: 3 evidence items, coverage 1
+- [x] ISC-M8a-7: full suite green at or above the 222-pass baseline, typecheck clean. Falsifier: `bun test`, `bun run typecheck`. — evidence: `bun test` 248 pass / 3 skip / 0 fail, 251 tests, 17 files; `tsc --noEmit` clean. The 3 skips are live-API tests, not run
+- [x] ISC-M8a-8: README architecture text and CHANGELOG Unreleased describe the generic provider; no doc still calls `AwsProvider` the provider interface. Falsifier: grep. — evidence: README Architecture + Implementation ledger; CHANGELOG Unreleased; `rg AwsProvider README.md` empty
+- [x] ISC-M8a-9: branch pushed and PR open against `main` with CI green. Falsifier: `gh pr view`, `gh pr checks`. — evidence: PR #3, head 5f15303; `gh pr checks 3` test pass (run 36348760470)
+
+## M8a Criteria (added by the second look)
+
+- [x] ISC-M8a-10: a deterministic check declares its family and the collectors it runs; the preflight verifies both, and a check never runs against another family's provider. Falsifier: a toy-family provider with a control id `SC-28`. — evidence: `evidence-provider.test.ts` "deterministic checks are family-scoped", 5 tests
+- [x] ISC-M8a-11: code-run checks reach collectors through the executor guard, never `provider.collect()` directly. Falsifier: a lenient provider lacking `getKMSConfig` is never called. — evidence: same suite, "preflight covers the collectors a check runs"
+- [x] ISC-M8a-12: a provider's catalog and its dispatch cannot drift (`defineProvider`, one table), and collector names are valid tool names with `submit_judgment` reserved. Falsifier: construction and preflight both refuse a bad catalog. — evidence: `evidence-provider.test.ts` "collector catalogs", 4 tests
+- [x] ISC-M8a-13: every SageMaker collector name runs its own method, and the CloudTrail window is 90 days before now. Falsifier: swapping two dispatch entries fails a test. — evidence: mutation run, `getModelCard` case failed; restored, suite green
+
+## Decisions (M8a, 2026-09-27)
+
+- 2026-09-27 (second look, Max, in-family, read-only — 0 CRITICAL / 2 MAJOR / 5 MINOR / 2 NIT; verdict "safe to open as a PR"): 8 adopted as diffs, 1 deferred. MAJOR-1 (the preflight rejects unknown names on attestation and deterministic controls that `main` never read): strictness kept, CHANGELOG now calls it a behavior change, and the missing-check preflight runs first again so a control set with both faults fails as it did on `main`. MAJOR-2 (checks bypassed the catalog guard; registry had no family): adopted in full, ISC-M8a-10 and -11. MINOR-3 inherited keys on the check lookup: `findDeterministicCheck`. MINOR-4 catalog drift and MINOR-5 tool-name validity: ISC-M8a-12. MINOR-6 tautological test: replaced, ISC-M8a-13; the reviewer's PLAUSIBLE mutation was run and is now caught. MINOR-7 parity was a one-off capture: committed as a fixture and a test. NIT-9 CHANGELOG breaking list: completed. Deferred to M8b: NIT-8, the attestation rationale's "AWS" wording, because changing it alters SageMaker report text; carried in ISC-M8b-10. MINOR-5's claim that the API rejects malformed tool names stays unverified; no API call was made.
+- 2026-09-27 (ISC-M8a-1 reworded, not softened): the first wording said the checks file would not reference `AwsProvider`. The second look showed string collector names inside the checks had lost compiler checking, so the file now imports the type on purpose. The claim names the modules that must stay generic instead.
+- 2026-09-27 (cross-vendor lane): `codex` 0.157.1 is installed and logged in on this machine, so Forge is available again. Not elected for M8a; one in-family second look matched the blast radius of an unmerged PR.
+
+## M8b Design (2026-09-27, scoped while M8a was under review)
+
+Read for this design: `schema/poc-evidence.schema.json`, `schema/README.md`, `checklist/poc-checklist.json` rows 7.3.2, 7.6.2, 7.7.1, 7.7.3, 7.7.5, 10.1.7, 10.2.1, 10.2.2, and the C7.6 auditor-evidence paragraph, all from the Proof-of-Control standard repository (Apache-2.0).
+
+- **Target is a descriptor, tokens stay on disk as raw text.** A PoC target file is `{ family: "poc-evidence", modelName, endpointName, stream: "<path to .jsonl>", disclosure: "<path>" }`. The CLI reads targets with `JSON.parse`, which resolves duplicate keys last-wins and says nothing, so a token embedded in the target file would arrive already laundered and the 7.7.5 check could never fail. The provider reads the stream's bytes itself and parses each record with `parseJsonStrict`.
+- **The provider is chosen by the target's `family`.** Absent means `aws-sagemaker`, so every existing target file keeps working.
+- **Collectors return facts, checks judge them.** The `poc-evidence` family offers collectors over the stream and the disclosure; the four deterministic rules live in `DETERMINISTIC_CHECKS` keyed by control id, as SC-28 and SC-7 do.
+- **Control wording says what is checked, no more.** Four of the six requirements are written about the deployment ("a parser rejects…", "a verifier… rejects", "published where a verifier can obtain it"). mlassure reads an evidence stream, so it can assess the artifact half of each and must say so: every PoC control's `intent` states the artifact-level property, and its `note` names the part of the requirement left unassessed.
+- **No signature verification in M8b.** Fixture streams are unsigned (`signature` is optional in the schema) and labelled so. 7.3.2 key custody is attestation.
+- **The vendored schema is pinned.** `fixtures/schemas/poc-evidence.schema.json` is copied byte for byte with its source commit and license recorded, and its sha256 is asserted in the test, the same treatment the NIST OSCAL schema gets.
+- **A control set names its family.** `ControlSet` gains an optional `family`; when present the preflight requires it to equal the provider's. Optional keeps every existing control file loading.
+- **PoC checks register through the family-scoped registry** (`{ family, requires, run }`, ISC-M8a-10) and the provider is built with `defineProvider`.
+- **Prompt text becomes family-supplied.** The system prompt's "AWS environment" wording and the initial message's "model … endpoint" wording move behind the provider; the SageMaker text stays byte-identical, with the M8a snapshot hash as the falsifier.
+
+## M8b Criteria (Proof-of-Control control family)
+
+- [ ] ISC-M8b-1: the CLI selects the provider from the target's `family`; absent selects `aws-sagemaker` and CLI output on model-clean and model-stale reproduces the M8a captures; an unknown family exits 1 naming it. Falsifier: `shasum` of re-run captures; exit code on a bad family. (after: ISC-M8a-9)
+- [ ] ISC-M8b-2: the `poc-evidence` provider reads the stream as raw text and a record with a duplicate key is reported with the key and record index, never resolved. Falsifier: the standard's `duplicate-key.json` vector placed in a stream; `JSON.parse` on the same bytes succeeds. (after: ISC-M8b-1)
+- [ ] ISC-M8b-3: `fixtures/schemas/poc-evidence.schema.json` is byte-identical to the standard's file at a named commit, its sha256 is asserted in a test, and the source, commit and Apache-2.0 license are recorded beside it. Falsifier: `shasum` against the standard's clone; test fails when one byte changes.
+- [ ] ISC-M8b-4: control `PoC-7.7.1` (deterministic): every record in a clean stream validates against the pinned schema and the verdict is `satisfied`; a stream holding any schema-negative vector is `not-satisfied` naming the record index and the failing schema path. Falsifier: one fixture stream per outcome. (after: ISC-M8b-2, ISC-M8b-3)
+- [ ] ISC-M8b-5: control `PoC-7.7.3` (deterministic): every digest-typed claim carries a recognised algorithm tag at the width that tag implies, and `alg` is present; the `untagged-digest` and `digest-alg-width-mismatch` vectors each give `not-satisfied` naming the claim. Falsifier: fixture streams. (after: ISC-M8b-2)
+- [ ] ISC-M8b-6: control `PoC-7.7.5` (deterministic): a stream with no duplicate keys is `satisfied`; one duplicate key anywhere is `not-satisfied` naming the key, path and record. Falsifier: fixture streams. (after: ISC-M8b-2)
+- [ ] ISC-M8b-7: control `PoC-7.6.2` (deterministic): per `agent_id`, `step_index` starts at 0 and rises by exactly 1; deleting one record from the clean stream gives `not-satisfied` naming the gap; a repeated or descending index gives `not-satisfied`; an empty stream gives `insufficient-evidence`. Falsifier: fixture streams, including the delete-one case the standard's auditor-evidence text describes. (after: ISC-M8b-2)
+- [ ] ISC-M8b-8: control `PoC-7.3.2` (attestation) returns `insufficient-evidence` with zero LLM calls and zero collector calls. Falsifier: counting LLM and provider. (after: ISC-M8b-1)
+- [ ] ISC-M8b-9: control `PoC-10.2` (synthesis) runs the agent loop over the disclosure collector and cites only retrieved evidence; proven with a scripted LLM. A live run is `[DEFERRED-VERIFY]` when no API key is present. Falsifier: unit test; citation guard rejects a phantom id. (after: ISC-M8b-1)
+- [ ] ISC-M8b-10: prompts are family-supplied: the SageMaker snapshot sha256 `03e4bb61…` still reproduces, and no PoC prompt, tool description or code-generated rationale (the attestation bypass text included) contains "AWS", "SageMaker", "model" as the subject, or "endpoint". Falsifier: `shasum`; grep over a PoC prompt capture. (after: ISC-M8b-1)
+- [ ] ISC-M8b-11: every control in `fixtures/controls/poc-c7-subset.yaml` has an `intent` stating an artifact-level property and a `note` naming what the requirement asks that mlassure did not assess; the narrative and OSCAL outputs carry that note. Falsifier: Read; grep the rendered outputs. (after: ISC-M8b-4)
+- [ ] ISC-M8b-12: the OSCAL AR produced from a PoC run validates against NIST's 1.1.2 schema, including the control-id token form for ids like `PoC-7.7.1`. Falsifier: the existing schema test over the new output. (after: ISC-M8b-4)
+- [ ] ISC-M8b-13: a bundle written from a PoC run verifies with `verify-bundle`, format still "1". Falsifier: exit code 0; the 0.5.0 positive vector still verifies. (after: ISC-M8b-12)
+- [ ] ISC-M8b-14: README shows the PoC run end to end and `docs/proof-of-control.md` says what M8b assesses and what it does not; neither claims mlassure "has" Proof-of-Control (1.0 anti-claim 1). Falsifier: grep. (after: ISC-M8b-11)
+- [ ] ISC-M8b-15: full suite green, typecheck clean, branch stacked on M8a, PR open with CI green. Falsifier: `bun test`, `gh pr checks`. (after: ISC-M8b-14)
+
+## Not yet specified (M8)
+
+- M8b target shape, reasoned default pending Jose's redirect: a token STREAM (an ordered array of one or more evidence tokens; a single token is a stream of length 1). Grounds: 7.6.2 monotonic `step_index` is unassessable on one token, and the standard publishes a token schema and vectors (`schema/poc-evidence.schema.json`) while the C10.1.7 conformance-statement format is still undefined by the WG, so the statement stays out.
+- How a non-SageMaker target fills `AssessmentTarget.modelName` / `endpointName` and the report fields built from them, without changing bundle format 1.
+- Whether report and narrative labels ("Endpoint:") should become family-supplied, or a PoC target reuses `endpointName` for the issuer as M8b does.
+- The M3d cap ("two deterministic checks, no third without a fresh scoping pass") is lifted by M8b; the scoping pass is the M8 roadmap row plus the per-check claims.

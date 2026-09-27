@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Provider generalization: the agent, runner and tools now depend on a generic `EvidenceProvider` (`family`, a collector catalog, `collect(name, target)`) instead of the SageMaker-shaped `AwsProvider`. SageMaker becomes the first family (`src/providers/aws-sagemaker.ts`), adapted with `awsSageMakerProvider()`; its typed collector methods are unchanged. For a control set that loads and runs, nothing changes: tool definitions, prompts and CLI output are byte-identical. **Breaking for library callers:** `assessControl` and `runAssessment` take an `EvidenceProvider`; `executeCollector` and `DeterministicCheckFn` take an `EvidenceProvider`; `buildToolDefs` and `isKnownCollector` take the provider as a second argument; `src/providers/aws-provider.interface.ts` moved into `aws-sagemaker.ts`.
+
+- **Behavior change, stricter:** `runAssessment` now checks the whole control set against the provider before any control is assessed, and aborts with `UnknownCollectorsError` listing every (control, collector) pair the provider does not offer. This covers `attestation` and `deterministic` controls too. Before, a collector name on those two patterns was never read, so a control set carrying an unknown or misspelled name there produced a report; it now fails until the name is corrected or removed.
+- Deterministic checks declare the family they were written for and the collectors they run. A check never runs against another family's provider (`DeterministicCheckFamilyError`), and its collectors are verified in the same preflight. `DETERMINISTIC_CHECKS` entries changed from a function to `{ family, requires, run }`.
+
+### Added
+
+- `defineProvider(family, definitions)`: builds a provider from one table of `{ description, run }`, so a collector's description and its implementation cannot drift apart.
+- Collector names are validated as tool names, and `submit_judgment` is reserved; a provider with an unusable catalog aborts the run (`InvalidCollectorCatalogError`).
+- `fixtures/parity/sagemaker-llm-inputs.json` and a test pinning every tool definition and prompt the SageMaker family sends to the model.
+
+### Fixed
+
+- Collector lookup used the `in` operator, so a tool call named after an inherited object key (`constructor`, `toString`) was treated as a known collector. Lookup is now own-property only and such a call gets "Unknown tool". The deterministic-check lookup by control id had the same flaw and the same fix.
+
 ## [0.5.0] - 2026-09-25
 
 ### Added

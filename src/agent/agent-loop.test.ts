@@ -2,7 +2,8 @@ import { describe, it, expect } from "bun:test";
 import { assessControl } from "./agent.js";
 import { parseJudgment } from "../guard/judgment-validator.js";
 import type { LlmProvider, LlmCompletionParams, LlmCompletionResult } from "../llm/llm-provider.interface.js";
-import type { AwsProvider } from "../providers/aws-provider.interface.js";
+import { awsSageMakerProvider, type AwsProvider } from "../providers/aws-sagemaker.js";
+import type { EvidenceProvider } from "../providers/evidence-provider.interface.js";
 import type { ControlItem, AssessmentTarget, RawEvidence } from "../types.js";
 import { randomUUID } from "node:crypto";
 
@@ -23,8 +24,8 @@ const MOCK_CONTROL: ControlItem = {
   collectors: ["getDataCaptureConfig", "getModelMonitorSchedules"],
 };
 
-function makeProvider(overrides: Partial<AwsProvider> = {}): AwsProvider {
-  return {
+function makeProvider(overrides: Partial<AwsProvider> = {}): EvidenceProvider {
+  return awsSageMakerProvider({
     getModelRegistryEntry: async () => mockRaw("registry", { approved: true }),
     getModelCard: async () => null,
     getEndpointConfig: async () => null,
@@ -35,7 +36,7 @@ function makeProvider(overrides: Partial<AwsProvider> = {}): AwsProvider {
     getEndpointExecutionRole: async () => null,
     getCloudTrailEvents: async () => [],
     ...overrides,
-  };
+  });
 }
 
 describe("agent loop — unit (no API key required)", () => {
@@ -235,20 +236,19 @@ describe("agent loop — attestation pattern bypasses the LLM loop (M3b)", () =>
   }
 
   function makeCountingProvider(overrides: Partial<AwsProvider> = {}): {
-    provider: AwsProvider;
+    provider: EvidenceProvider;
     callCount: () => number;
   } {
     let calls = 0;
     const base = makeProvider(overrides);
-    const wrapped = {} as AwsProvider;
-    for (const key of Object.keys(base) as (keyof AwsProvider)[]) {
-      // @ts-expect-error — dynamically wrapping each collector method to count invocations
-      wrapped[key] = async (...args: unknown[]) => {
+    const wrapped: EvidenceProvider = {
+      family: base.family,
+      collectors: base.collectors,
+      collect: async (name, target) => {
         calls++;
-        // @ts-expect-error — forwarding to the underlying mock implementation
-        return base[key](...args);
-      };
-    }
+        return base.collect(name, target);
+      },
+    };
     return { provider: wrapped, callCount: () => calls };
   }
 

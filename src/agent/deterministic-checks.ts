@@ -1,5 +1,7 @@
-import type { ControlItem, AssessmentTarget, Judgment } from "../types.js";
-import type { AwsProvider } from "../providers/aws-provider.interface.js";
+import type { ControlItem, AssessmentTarget, Judgment, RawEvidence } from "../types.js";
+import type { EvidenceProvider } from "../providers/evidence-provider.interface.js";
+import { AWS_SAGEMAKER_FAMILY, type AwsProvider } from "../providers/aws-sagemaker.js";
+import { executeCollector } from "../tools/executor.js";
 import { EvidenceStore } from "../store/evidence-store.js";
 import { validateCitations } from "../guard/citation-guard.js";
 import { parseJudgment } from "../guard/judgment-validator.js";
@@ -13,8 +15,29 @@ import type { AssessControlResult } from "./agent.js";
 export type DeterministicCheckFn = (
   control: ControlItem,
   target: AssessmentTarget,
-  provider: AwsProvider
+  provider: EvidenceProvider
 ) => Promise<AssessControlResult>;
+
+/**
+ * For collectors a check expects to yield at most one item. A list here is a
+ * provider defect, and picking an element would let the rule run against
+ * evidence chosen by accident — so it throws rather than guessing.
+ */
+async function collectSingle(
+  provider: EvidenceProvider,
+  collectorName: string,
+  target: AssessmentTarget
+): Promise<RawEvidence | null> {
+  // Through the executor, never provider.collect() directly: the catalog guard
+  // applies to code-run checks exactly as it does to model tool calls.
+  const result = await executeCollector(collectorName, provider, target);
+  if (Array.isArray(result)) {
+    throw new Error(
+      `Collector "${collectorName}" returned a list (${result.length} items) where a deterministic check expects a single evidence item`
+    );
+  }
+  return result;
+}
 
 /**
  * Every deterministic check must run its judgment through the SAME guards the
@@ -36,7 +59,7 @@ function finalizeJudgment(judgment: Judgment, store: EvidenceStore): Judgment {
  * Reads a required string field off an evidence payload, returning `null`
  * (never `undefined`, never silently coercing) if the field is missing or
  * not a string. Silent-failure-hunter finding: an unguarded `as` cast let a
- * malformed/unexpected payload shape (e.g. a real, non-fixture AwsProvider
+ * malformed/unexpected payload shape (e.g. a real, non-fixture provider
  * returning different field names) silently evaluate `undefined === "X"` as
  * `false` and produce a confident, WRONG `not-satisfied` verdict instead of
  * an honest `insufficient-evidence` one. Every deterministic check must
@@ -76,13 +99,16 @@ function malformedEvidenceJudgment(control: ControlItem, collectorName: string, 
   };
 }
 
+const KMS_CONFIG = "getKMSConfig" satisfies keyof AwsProvider;
+const NETWORK_CONFIG = "getEndpointNetworkConfig" satisfies keyof AwsProvider;
+
 async function checkSC28(
   control: ControlItem,
   target: AssessmentTarget,
-  provider: AwsProvider
+  provider: EvidenceProvider
 ): Promise<AssessControlResult> {
   const store = new EvidenceStore();
-  const raw = await provider.getKMSConfig(target);
+  const raw = await collectSingle(provider, KMS_CONFIG, target);
 
   if (raw === null) {
     return {
@@ -142,10 +168,10 @@ async function checkSC28(
 async function checkSC7(
   control: ControlItem,
   target: AssessmentTarget,
-  provider: AwsProvider
+  provider: EvidenceProvider
 ): Promise<AssessControlResult> {
   const store = new EvidenceStore();
-  const raw = await provider.getEndpointNetworkConfig(target);
+  const raw = await collectSingle(provider, NETWORK_CONFIG, target);
 
   if (raw === null) {
     return {
@@ -221,6 +247,26 @@ async function checkSC7(
 }
 
 /**
+ * A registered check names the family it was written for and every collector
+ * it runs. Both are verified by `runAssessment()`'s preflight: control ids
+ * are not unique across families, and a check reaches for collectors by name
+ * no matter what the control's own `collectors` list says.
+ */
+export type DeterministicCheck = {
+  family: string;
+  requires: readonly string[];
+  run: DeterministicCheckFn;
+};
+
+/** Collector names are compiler-checked against the family's typed surface. */
+function sageMakerCheck(
+  requires: readonly (keyof AwsProvider)[],
+  run: DeterministicCheckFn
+): DeterministicCheck {
+  return { family: AWS_SAGEMAKER_FAMILY, requires, run };
+}
+
+/**
  * Per-control-ID registry, not per-pattern — each deterministic control's rule
  * is genuinely different code, mirroring how collectors are dispatched by name
  * rather than by a declarative rule DSL (no eval, no dynamic rule language
@@ -229,7 +275,16 @@ async function checkSC7(
  * Scope is deliberately capped at these 2 controls (M3d advisor decision) —
  * do not add a 3rd/4th without a fresh scoping pass.
  */
-export const DETERMINISTIC_CHECKS: Record<string, DeterministicCheckFn> = {
-  "SC-28": checkSC28,
-  "SC-7": checkSC7,
+export const DETERMINISTIC_CHECKS: Record<string, DeterministicCheck> = {
+  "SC-28": sageMakerCheck([KMS_CONFIG], checkSC28),
+  "SC-7": sageMakerCheck([NETWORK_CONFIG], checkSC7),
 };
+
+/** Own-property lookup: a control id of "constructor" has no check. */
+export function findDeterministicCheck(
+  controlId: string
+): DeterministicCheck | undefined {
+  return Object.hasOwn(DETERMINISTIC_CHECKS, controlId)
+    ? DETERMINISTIC_CHECKS[controlId]
+    : undefined;
+}
