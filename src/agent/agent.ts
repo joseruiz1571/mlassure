@@ -7,7 +7,7 @@ import { executeCollector, isKnownCollector } from "../tools/executor.js";
 import { buildSystemPrompt, buildInitialMessage } from "./prompts.js";
 import { validateCitations } from "../guard/citation-guard.js";
 import { parseJudgment } from "../guard/judgment-validator.js";
-import { DETERMINISTIC_CHECKS } from "./deterministic-checks.js";
+import { findDeterministicCheck } from "./deterministic-checks.js";
 
 const MAX_ITERATIONS = 10;
 
@@ -82,6 +82,43 @@ export class UnknownCollectorsError extends Error {
   }
 }
 
+/**
+ * Thrown by `runAssessment()`'s preflight when the provider's own catalog
+ * cannot be offered to the model: a collector named like the judgment tool,
+ * or a name outside the tool-name grammar.
+ */
+export class InvalidCollectorCatalogError extends Error {
+  constructor(
+    public readonly family: string,
+    public readonly problems: readonly string[]
+  ) {
+    super(
+      `Provider "${family}" has an unusable collector catalog: ${problems.join("; ")}. Aborting before any control is assessed.`
+    );
+    this.name = "InvalidCollectorCatalogError";
+  }
+}
+
+/**
+ * Thrown when a deterministic control's registered check was written for a
+ * different family than the provider in use. Control ids are not unique
+ * across families; without this, one family's rule would run against
+ * another family's evidence and report a confident verdict about nothing.
+ */
+export class DeterministicCheckFamilyError extends Error {
+  constructor(
+    public readonly mismatches: readonly { controlId: string; checkFamily: string }[],
+    public readonly family: string
+  ) {
+    super(
+      `Deterministic check(s) registered for another family than the "${family}" provider: ` +
+        mismatches.map((m) => `${m.controlId} (check is for "${m.checkFamily}")`).join(", ") +
+        `. Aborting before any control is assessed.`
+    );
+    this.name = "DeterministicCheckFamilyError";
+  }
+}
+
 export async function assessControl(
   control: ControlItem,
   target: AssessmentTarget,
@@ -118,11 +155,19 @@ export async function assessControl(
   // each deterministic control's rule is genuinely different code. Fail-loud,
   // never a silent LLM fallback — see MissingDeterministicCheckError.
   if (control.pattern === "deterministic") {
-    const check = DETERMINISTIC_CHECKS[control.id];
+    const check = findDeterministicCheck(control.id);
     if (!check) {
       throw new MissingDeterministicCheckError(control.id);
     }
-    return check(control, target, provider);
+    // Same defensive footing as the missing-check throw: the preflight is the
+    // reachable guard, this one keeps a direct caller from running one
+    // family's rule against another family's provider.
+    if (check.family !== provider.family) {
+      throw new DeterministicCheckFamilyError([
+        { controlId: control.id, checkFamily: check.family },
+      ], provider.family);
+    }
+    return check.run(control, target, provider);
   }
 
   const store = new EvidenceStore();

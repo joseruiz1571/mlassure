@@ -7,6 +7,7 @@ import type {
   Evidence,
 } from "../types.js";
 import {
+  catalogProblems,
   hasCollector,
   type EvidenceProvider,
 } from "../providers/evidence-provider.interface.js";
@@ -15,8 +16,10 @@ import {
   assessControl,
   MissingDeterministicChecksError,
   UnknownCollectorsError,
+  DeterministicCheckFamilyError,
+  InvalidCollectorCatalogError,
 } from "../agent/agent.js";
-import { DETERMINISTIC_CHECKS } from "../agent/deterministic-checks.js";
+import { findDeterministicCheck } from "../agent/deterministic-checks.js";
 
 /** A cited evidence item retained for downstream output (OSCAL, narrative). */
 export type CitedEvidence = {
@@ -146,27 +149,58 @@ export async function runAssessment(
   provider: EvidenceProvider,
   llm: LlmProvider
 ): Promise<AssessmentReport> {
-  // Preflight (M8a): collector names are strings, so the control set is
-  // checked against the provider here instead of by the compiler.
-  const unknownCollectors = controlSet.controls.flatMap((c) =>
-    [...new Set(c.collectors)]
-      .filter((name) => !hasCollector(provider, name))
-      .map((collector) => ({ controlId: c.id, collector }))
-  );
-  if (unknownCollectors.length > 0) {
-    throw new UnknownCollectorsError(provider.family, unknownCollectors);
-  }
-
   // Preflight (M3d, advisor-mandated): abort the WHOLE run before any control
   // is assessed if any deterministic-pattern control is missing its registered
   // check — not lazily inside assessControl(), where a gap would only surface
   // after earlier controls already burned real LLM calls. Lists every missing
   // ID at once, not just the first, so one run reveals the full gap.
   const missingChecks = controlSet.controls
-    .filter((c) => c.pattern === "deterministic" && !DETERMINISTIC_CHECKS[c.id])
+    .filter((c) => c.pattern === "deterministic" && !findDeterministicCheck(c.id))
     .map((c) => c.id);
   if (missingChecks.length > 0) {
     throw new MissingDeterministicChecksError(missingChecks);
+  }
+
+  // Preflight (M8a): collector names and control ids are strings, so the
+  // control set is checked against the provider here instead of by the
+  // compiler. Runs after the missing-check preflight so a control set with
+  // both faults still fails the way it did before M8a.
+  const problems = catalogProblems(provider);
+  if (problems.length > 0) {
+    throw new InvalidCollectorCatalogError(provider.family, problems);
+  }
+
+  const deterministic = controlSet.controls.flatMap((c) => {
+    const check = c.pattern === "deterministic" ? findDeterministicCheck(c.id) : undefined;
+    return check ? [{ controlId: c.id, check }] : [];
+  });
+  const familyMismatches = deterministic
+    .filter(({ check }) => check.family !== provider.family)
+    .map(({ controlId, check }) => ({ controlId, checkFamily: check.family }));
+  if (familyMismatches.length > 0) {
+    throw new DeterministicCheckFamilyError(familyMismatches, provider.family);
+  }
+
+  // Tagged collectors on every control, plus the collectors each registered
+  // check actually runs — a check reaches for its collectors by name whatever
+  // the control's own list says.
+  const named = [
+    ...controlSet.controls.flatMap((c) =>
+      c.collectors.map((collector) => ({ controlId: c.id, collector }))
+    ),
+    ...deterministic.flatMap(({ controlId, check }) =>
+      check.requires.map((collector) => ({ controlId, collector }))
+    ),
+  ];
+  const seen = new Set<string>();
+  const unknownCollectors = named.filter(({ controlId, collector }) => {
+    const key = JSON.stringify([controlId, collector]);
+    if (seen.has(key) || hasCollector(provider, collector)) return false;
+    seen.add(key);
+    return true;
+  });
+  if (unknownCollectors.length > 0) {
+    throw new UnknownCollectorsError(provider.family, unknownCollectors);
   }
 
   const results: ControlResult[] = [];

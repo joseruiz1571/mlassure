@@ -1,12 +1,18 @@
 import { describe, it, expect } from "bun:test";
 import { randomUUID } from "node:crypto";
 import type { EvidenceProvider } from "./evidence-provider.interface.js";
-import { hasCollector } from "./evidence-provider.interface.js";
+import { hasCollector, defineProvider, catalogProblems } from "./evidence-provider.interface.js";
 import { awsSageMakerProvider, AWS_SAGEMAKER_COLLECTORS } from "./aws-sagemaker.js";
 import { FixtureProvider } from "./fixture-provider.js";
 import { executeCollector, isKnownCollector } from "../tools/executor.js";
 import { buildToolDefs } from "../tools/registry.js";
-import { assessControl, UnknownCollectorsError } from "../agent/agent.js";
+import {
+  assessControl,
+  UnknownCollectorsError,
+  DeterministicCheckFamilyError,
+  InvalidCollectorCatalogError,
+  MissingDeterministicChecksError,
+} from "../agent/agent.js";
 import { runAssessment } from "../runner/assessment-runner.js";
 import type { LlmProvider, LlmCompletionResult } from "../llm/llm-provider.interface.js";
 import type { AssessmentTarget, ControlItem, RawEvidence } from "../types.js";
@@ -242,17 +248,6 @@ describe("EvidenceProvider — generic dispatch (M8a)", () => {
     expect(result.coverageConfidence).toBe("high");
   });
 
-  it("the SageMaker catalog and the adapter offer exactly the same nine names", () => {
-    const provider = awsSageMakerProvider(
-      new FixtureProvider("fixtures/targets/model-clean.json")
-    );
-    expect(provider.family).toBe("aws-sagemaker");
-    expect(Object.keys(provider.collectors).sort()).toEqual(
-      Object.keys(AWS_SAGEMAKER_COLLECTORS).sort()
-    );
-    expect(Object.keys(provider.collectors)).toHaveLength(9);
-  });
-
   it("a single-item deterministic check refuses a collector that returns a list", async () => {
     const provider: EvidenceProvider = {
       family: "aws-sagemaker",
@@ -276,3 +271,172 @@ describe("EvidenceProvider — generic dispatch (M8a)", () => {
     expect(callCount()).toBe(0);
   });
 });
+
+describe("deterministic checks are family-scoped (M8a, second-look MAJOR-2)", () => {
+  const SC28: ControlItem = {
+    id: "SC-28",
+    framework: "another framework that happens to reuse the id",
+    pattern: "deterministic",
+    intent: "Same id, different family.",
+    collectors: [],
+  };
+  const LLM_FIRST: ControlItem = {
+    id: "LEDGER-1",
+    framework: "toy",
+    pattern: "sufficiency",
+    intent: "Would burn an LLM call if assessment started.",
+    collectors: ["readLedgerHead"],
+  };
+  const neverLlm = () =>
+    makeCountingLlm(() => {
+      throw new Error("the LLM must not be called when preflight fails");
+    });
+
+  it("a check written for one family never runs against another family's provider", async () => {
+    const { provider, calls } = makeLedgerProvider();
+    const { llm, callCount } = neverLlm();
+
+    const run = runAssessment(
+      { version: "t", controls: [LLM_FIRST, SC28] },
+      TARGET,
+      provider,
+      llm
+    );
+
+    await expect(run).rejects.toBeInstanceOf(DeterministicCheckFamilyError);
+    const err = (await run.catch((e: unknown) => e)) as DeterministicCheckFamilyError;
+    expect(err.mismatches).toEqual([{ controlId: "SC-28", checkFamily: "aws-sagemaker" }]);
+    expect(err.family).toBe("toy-ledger");
+    expect(callCount()).toBe(0);
+    expect(calls).toEqual([]);
+  });
+
+  it("assessControl called directly refuses the same mismatch without touching the provider", async () => {
+    const { provider, calls } = makeLedgerProvider();
+    const { llm } = neverLlm();
+
+    await expect(assessControl(SC28, TARGET, provider, llm)).rejects.toBeInstanceOf(
+      DeterministicCheckFamilyError
+    );
+    expect(calls).toEqual([]);
+  });
+
+  it("preflight covers the collectors a check runs, not only the ones the control lists", async () => {
+    const { getKMSConfig: _dropped, ...withoutKms } = AWS_SAGEMAKER_COLLECTORS;
+    const calls: string[] = [];
+    const provider: EvidenceProvider = {
+      family: "aws-sagemaker",
+      collectors: withoutKms,
+      // Lenient on purpose: answers null for anything, as a careless provider would.
+      collect: async (name) => {
+        calls.push(name);
+        return null;
+      },
+    };
+    const { llm, callCount } = neverLlm();
+
+    const run = runAssessment({ version: "t", controls: [SC28] }, TARGET, provider, llm);
+
+    await expect(run).rejects.toBeInstanceOf(UnknownCollectorsError);
+    const err = (await run.catch((e: unknown) => e)) as UnknownCollectorsError;
+    expect(err.unknown).toEqual([{ controlId: "SC-28", collector: "getKMSConfig" }]);
+    expect(callCount()).toBe(0);
+    expect(calls).toEqual([]);
+
+    // And past the preflight, the executor guard still holds for code-run checks.
+    await expect(assessControl(SC28, TARGET, provider, llm)).rejects.toThrow(
+      'Unknown collector tool: "getKMSConfig"'
+    );
+    expect(calls).toEqual([]);
+  });
+
+  it("a control id that is an inherited object key has no check", async () => {
+    const { provider } = makeLedgerProvider();
+    const { llm } = neverLlm();
+    const control: ControlItem = { ...SC28, id: "constructor" };
+
+    await expect(
+      runAssessment({ version: "t", controls: [control] }, TARGET, provider, llm)
+    ).rejects.toBeInstanceOf(MissingDeterministicChecksError);
+  });
+
+  it("a control set with a missing check and an unknown collector fails on the missing check, as before M8a", async () => {
+    const { provider } = makeLedgerProvider();
+    const { llm } = neverLlm();
+    const controls: ControlItem[] = [
+      { ...SC28, id: "NO-CHECK-1" },
+      { ...LLM_FIRST, collectors: ["readLedgerHaed"] },
+    ];
+
+    await expect(
+      runAssessment({ version: "t", controls }, TARGET, provider, llm)
+    ).rejects.toBeInstanceOf(MissingDeterministicChecksError);
+  });
+});
+
+describe("collector catalogs (M8a, second-look MINOR-4 and MINOR-5)", () => {
+  it("defineProvider builds catalog and dispatch from one table", async () => {
+    const provider = defineProvider("toy", {
+      readOne: { description: "One item.", run: async () => raw("toy:one", { n: 1 }) },
+      readNone: { description: "Nothing.", run: async () => null },
+    });
+
+    expect(Object.keys(provider.collectors)).toEqual(["readOne", "readNone"]);
+    expect(provider.collectors["readOne"]).toEqual({ description: "One item." });
+    expect(((await provider.collect("readOne", TARGET)) as RawEvidence).source).toBe("toy:one");
+    expect(await provider.collect("readNone", TARGET)).toBeNull();
+    await expect(provider.collect("toString", TARGET)).rejects.toThrow(
+      'Unknown collector tool: "toString"'
+    );
+  });
+
+  it("defineProvider refuses a reserved or malformed collector name", () => {
+    const run = async () => null;
+    expect(() => defineProvider("toy", { submit_judgment: { description: "x", run } })).toThrow(
+      '"submit_judgment" is reserved for the judgment tool'
+    );
+    expect(() => defineProvider("toy", { "7.7.1 monotonic": { description: "x", run } })).toThrow(
+      '"7.7.1 monotonic" is not a valid tool name'
+    );
+    expect(() => defineProvider("toy", { ["a".repeat(65)]: { description: "x", run } })).toThrow(
+      "is not a valid tool name"
+    );
+  });
+
+  it("the shipped SageMaker catalog has no problems", () => {
+    expect(
+      catalogProblems(awsSageMakerProvider(new FixtureProvider("fixtures/targets/model-clean.json")))
+    ).toEqual([]);
+  });
+
+  it("runAssessment refuses a hand-built provider with an unusable catalog before any LLM call", async () => {
+    const calls: string[] = [];
+    const provider: EvidenceProvider = {
+      family: "hand-built",
+      collectors: { submit_judgment: { description: "x" }, "has space": { description: "y" } },
+      collect: async (name) => {
+        calls.push(name);
+        return null;
+      },
+    };
+    const { llm, callCount } = makeCountingLlm(() => {
+      throw new Error("the LLM must not be called when preflight fails");
+    });
+    const control: ControlItem = {
+      id: "C-1",
+      framework: "toy",
+      pattern: "sufficiency",
+      intent: "x",
+      collectors: [],
+    };
+
+    const run = runAssessment({ version: "t", controls: [control] }, TARGET, provider, llm);
+
+    await expect(run).rejects.toBeInstanceOf(InvalidCollectorCatalogError);
+    const err = (await run.catch((e: unknown) => e)) as InvalidCollectorCatalogError;
+    expect(err.problems).toHaveLength(2);
+    expect(callCount()).toBe(0);
+    expect(calls).toEqual([]);
+  });
+});
+
