@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import type { RawEvidence, AssessmentTarget } from "../types.js";
-import type { AwsProvider } from "./aws-provider.interface.js";
+import type { AwsProvider } from "./aws-sagemaker.js";
 
 function now(): string {
   return new Date().toISOString();

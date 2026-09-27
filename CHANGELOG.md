@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Provider generalization: the agent, runner and tools now depend on a generic `EvidenceProvider` (`family`, a collector catalog, `collect(name, target)`) instead of the SageMaker-shaped `AwsProvider`. SageMaker becomes the first family (`src/providers/aws-sagemaker.ts`), adapted with `awsSageMakerProvider()`; its typed collector methods are unchanged. No behavior change for existing control sets: tool definitions, prompts and CLI output are byte-identical. **Breaking for library callers:** `assessControl` and `runAssessment` take an `EvidenceProvider`; `buildToolDefs` and `isKnownCollector` take the provider as a second argument; `src/providers/aws-provider.interface.ts` moved into `aws-sagemaker.ts`.
+
+### Added
+
+- `runAssessment` preflight: a control set naming a collector the provider does not offer throws `UnknownCollectorsError` listing every (control, collector) pair, before any control is assessed.
+
+### Fixed
+
+- Collector lookup used the `in` operator, so a tool call named after an inherited object key (`constructor`, `toString`) was treated as a known collector. Lookup is now own-property only and such a call gets "Unknown tool".
+
 ## [0.5.0] - 2026-09-25
 
 ### Added

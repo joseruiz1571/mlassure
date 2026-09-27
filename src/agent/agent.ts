@@ -1,5 +1,5 @@
 import type { ControlItem, AssessmentTarget, Judgment, RawEvidence } from "../types.js";
-import type { AwsProvider } from "../providers/aws-provider.interface.js";
+import type { EvidenceProvider } from "../providers/evidence-provider.interface.js";
 import type { LlmProvider, LlmToolResultBlock } from "../llm/llm-provider.interface.js";
 import { EvidenceStore } from "../store/evidence-store.js";
 import { buildToolDefs, SUBMIT_JUDGMENT_TOOL } from "../tools/registry.js";
@@ -61,10 +61,31 @@ export class MissingDeterministicChecksError extends Error {
   }
 }
 
+/**
+ * Thrown by `runAssessment()`'s preflight when a control set names a
+ * collector the provider does not offer. Collector names are strings (M8a),
+ * so this is where a control-set typo or a control set run against the wrong
+ * target family is caught — before any control is assessed, with every
+ * offending pair listed at once.
+ */
+export class UnknownCollectorsError extends Error {
+  constructor(
+    public readonly family: string,
+    public readonly unknown: readonly { controlId: string; collector: string }[]
+  ) {
+    super(
+      `Control set names collector(s) the "${family}" provider does not offer: ` +
+        unknown.map((u) => `${u.controlId} → ${u.collector}`).join(", ") +
+        `. Aborting before any control is assessed.`
+    );
+    this.name = "UnknownCollectorsError";
+  }
+}
+
 export async function assessControl(
   control: ControlItem,
   target: AssessmentTarget,
-  provider: AwsProvider,
+  provider: EvidenceProvider,
   llm: LlmProvider
 ): Promise<AssessControlResult> {
   // Attestation is a property of the PATTERN, not of how many collectors happen
@@ -105,7 +126,7 @@ export async function assessControl(
   }
 
   const store = new EvidenceStore();
-  const tools = [...buildToolDefs(control.collectors), SUBMIT_JUDGMENT_TOOL];
+  const tools = [...buildToolDefs(control.collectors, provider), SUBMIT_JUDGMENT_TOOL];
   const systemPrompt = buildSystemPrompt(control);
   const calledCollectors = new Set<string>();
   // Collector identity is only known at the point of the tool call (block.name);
@@ -163,9 +184,9 @@ export async function assessControl(
           tool_use_id: block.id,
           content: "Judgment accepted.",
         });
-      } else if (isKnownCollector(block.name)) {
-        // isKnownCollector checks the GLOBAL executor map, not control.collectors —
-        // it permits executing any collector the system knows about, regardless of
+      } else if (isKnownCollector(block.name, provider)) {
+        // isKnownCollector checks the PROVIDER catalog, not control.collectors —
+        // it permits executing any collector the provider offers, regardless of
         // whether this control tagged it as relevant. That's fine for execution
         // (out-of-scope evidence is still real evidence), but coverage tracking must
         // stay bounded by the tagged set, or a model deviation calling/citing an

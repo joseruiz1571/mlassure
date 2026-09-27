@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { loadControlSet } from "../loaders/control-loader.js";
 import { FixtureProvider } from "../providers/fixture-provider.js";
+import { awsSageMakerProvider } from "../providers/aws-sagemaker.js";
 import { EvidenceStore } from "../store/evidence-store.js";
 import { AnthropicProvider } from "../llm/anthropic-provider.js";
 import { runAssessment } from "../runner/assessment-runner.js";
@@ -148,7 +149,7 @@ async function runScaffoldOnly(
 ): Promise<void> {
   const controlSet = await loadControlSet(controlsPath);
   const targetJson = JSON.parse(readFileSync(targetPath, "utf-8")) as AssessmentTarget;
-  const _provider = new FixtureProvider(targetPath);
+  const _provider = awsSageMakerProvider(new FixtureProvider(targetPath));
   const store = new EvidenceStore();
 
   console.log("\nmlassure — scaffold mode (pass --live for agent assessment)\n");
@@ -182,7 +183,7 @@ async function runLive(
 ): Promise<void> {
   const controlSet = await loadControlSet(controlsPath);
   const targetJson = JSON.parse(readFileSync(targetPath, "utf-8")) as AssessmentTarget;
-  const provider = new FixtureProvider(targetPath);
+  const provider = awsSageMakerProvider(new FixtureProvider(targetPath));
   const llm = new AnthropicProvider({
     ...(opts.model !== undefined ? { model: opts.model } : {}),
     ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),

@@ -1,56 +1,25 @@
 import type { LlmToolDef } from "../llm/llm-provider.interface.js";
+import {
+  hasCollector,
+  type EvidenceProvider,
+} from "../providers/evidence-provider.interface.js";
 
-const COLLECTOR_DEFS: Record<string, { description: string }> = {
-  getModelRegistryEntry: {
-    description:
-      "Retrieves the model package registry entry: approval status, approval timestamp, version, lineage, and ARN.",
-  },
-  getModelCard: {
-    description:
-      "Retrieves the model card: intended use, limitations, risk rating, and evaluation details. Returns null if no card exists.",
-  },
-  getEndpointConfig: {
-    description:
-      "Retrieves the endpoint configuration: instance type, network isolation flag, and data-capture settings.",
-  },
-  getDataCaptureConfig: {
-    description:
-      "Retrieves inference data capture configuration: whether capture is enabled, capture percentage, and destination S3 path. A prerequisite for drift and quality monitoring.",
-  },
-  getModelMonitorSchedules: {
-    description:
-      "Retrieves all model monitor schedules for the endpoint: schedule name, type (DataQuality / ModelQuality / ModelBias / ModelExplainability), schedule status, last run status, last run time, and baseline creation timestamp.",
-  },
-  getKMSConfig: {
-    description:
-      "Retrieves KMS encryption configuration for model artifacts and endpoint volumes: key ARN, key manager (CUSTOMER vs AWS), and enabled status.",
-  },
-  getEndpointNetworkConfig: {
-    description:
-      "Retrieves VPC and network isolation configuration: VPC ID, subnet IDs, security group IDs, and network isolation flag.",
-  },
-  getEndpointExecutionRole: {
-    description:
-      "Retrieves the IAM execution role attached to the endpoint: role ARN and all attached policy statements (effect, actions, resources). Critical for least-privilege assessment.",
-  },
-  getCloudTrailEvents: {
-    description:
-      "Retrieves recent CloudTrail events for the model/endpoint: event names, timestamps, user identity, and request parameters. Covers CreateEndpoint, UpdateEndpoint, and registry approval events for change-control analysis.",
-  },
-};
-
-function collectorDef(name: string): LlmToolDef {
-  const def = COLLECTOR_DEFS[name];
-  if (!def) throw new Error(`Unknown collector: ${name}`);
+function collectorDef(name: string, provider: EvidenceProvider): LlmToolDef {
+  if (!hasCollector(provider, name)) {
+    throw new Error(`Unknown collector: ${name}`);
+  }
   return {
     name,
-    description: def.description,
+    description: provider.collectors[name]!.description,
     input_schema: { type: "object", properties: {}, required: [] },
   };
 }
 
-export function buildToolDefs(collectorNames: string[]): LlmToolDef[] {
-  return collectorNames.map(collectorDef);
+export function buildToolDefs(
+  collectorNames: string[],
+  provider: EvidenceProvider
+): LlmToolDef[] {
+  return collectorNames.map((name) => collectorDef(name, provider));
 }
 
 export const SUBMIT_JUDGMENT_TOOL: LlmToolDef = {

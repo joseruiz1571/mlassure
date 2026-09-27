@@ -6,9 +6,16 @@ import type {
   TagProvenanceRecord,
   Evidence,
 } from "../types.js";
-import type { AwsProvider } from "../providers/aws-provider.interface.js";
+import {
+  hasCollector,
+  type EvidenceProvider,
+} from "../providers/evidence-provider.interface.js";
 import type { LlmProvider } from "../llm/llm-provider.interface.js";
-import { assessControl, MissingDeterministicChecksError } from "../agent/agent.js";
+import {
+  assessControl,
+  MissingDeterministicChecksError,
+  UnknownCollectorsError,
+} from "../agent/agent.js";
 import { DETERMINISTIC_CHECKS } from "../agent/deterministic-checks.js";
 
 /** A cited evidence item retained for downstream output (OSCAL, narrative). */
@@ -136,9 +143,20 @@ export type AssessmentReport = {
 export async function runAssessment(
   controlSet: ControlSet,
   target: AssessmentTarget,
-  provider: AwsProvider,
+  provider: EvidenceProvider,
   llm: LlmProvider
 ): Promise<AssessmentReport> {
+  // Preflight (M8a): collector names are strings, so the control set is
+  // checked against the provider here instead of by the compiler.
+  const unknownCollectors = controlSet.controls.flatMap((c) =>
+    [...new Set(c.collectors)]
+      .filter((name) => !hasCollector(provider, name))
+      .map((collector) => ({ controlId: c.id, collector }))
+  );
+  if (unknownCollectors.length > 0) {
+    throw new UnknownCollectorsError(provider.family, unknownCollectors);
+  }
+
   // Preflight (M3d, advisor-mandated): abort the WHOLE run before any control
   // is assessed if any deterministic-pattern control is missing its registered
   // check — not lazily inside assessControl(), where a gap would only surface

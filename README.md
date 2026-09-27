@@ -191,7 +191,7 @@ CLI (assess command)
   └── ControlSetLoader       — YAML/JSON control definitions with agent-pattern tags
   └── AssessmentRunner       — one EvidenceStore per control
         └── assessControl()  — Anthropic tool-use loop, MAX_ITERATIONS=10
-              ├── ToolExecutor     — maps tool names → AwsProvider methods
+              ├── ToolExecutor     — runs a collector by name on the EvidenceProvider
               ├── EvidenceStore    — SHA-256 content-addressed, duplicate-rejected
               └── CitationGuard    — fail-closed: every cited ID must exist in store
 ```
@@ -218,7 +218,8 @@ CLI (assess command)
 - **Agent pattern taxonomy** — five patterns (`synthesis`, `sufficiency`, `correlation`, `deterministic`, `attestation`) defined in types and carried in the control YAML; each control is tagged before assessment runs (`src/types.ts`, `fixtures/controls/nist-subset.yaml`)
 - **Attestation → insufficient-evidence** — attestation-tagged controls return `insufficient-evidence` with a gap description; the system knows what it cannot determine; enforced via system prompt and verified in integration tests
 - **Tool-use loop** — Anthropic tool-use protocol, `MAX_ITERATIONS=10`, deterministic tool dispatch, citation validation at `submit_judgment` exit (`src/agent/agent.ts`)
-- **Fixture provider** — two fixture models with opposing verdicts (clean vs. stale monitoring) fully implement the `AwsProvider` interface (`src/providers/fixture-provider.ts`)
+- **Fixture provider** — two fixture models with opposing verdicts (clean vs. stale monitoring) implement the SageMaker family's typed collector surface (`src/providers/fixture-provider.ts`)
+- **Generic evidence provider** — the agent, runner and tools depend on one `EvidenceProvider` interface: a family name, a catalog of named collectors, and `collect(name, target)`. A target family is a catalog plus a control set; SageMaker is the first (`src/providers/aws-sagemaker.ts`). Because collector names are strings, the runner checks every control against the provider's catalog and aborts before any control is assessed if a name is unknown (`src/providers/evidence-provider.interface.ts`)
 
 - **OSCAL Assessment Results output** — fail-closed 5-value→binary projection (`satisfied` judgment only; all others map to `not-satisfied`); full 5-value precision preserved in `judgment-status` prop; loud remarks for `not-applicable` findings (`src/output/oscal-ar.ts`); CLI: `mlassure assess ... --oscal <path>`. **Official-schema conformance verified (2026-07-23):** every generated document validates against NIST's own OSCAL 1.1.2 assessment-results JSON schema (vendored at `fixtures/schemas/`, sha256-pinned in the test so the schema can't be quietly edited to pass) and independently parses through compliance-trestle 4.0.2's strict model. The external check found what 40+ self-authored tests never did: print-form control IDs (`SI-6(1)`) violate OSCAL's token datatype. **Breaking change for `target-id` consumers:** findings now carry the NIST catalog token form (`si-6.1`); the raw print-form id is preserved on every finding as a `source-control-id` prop. Known disclosed simplification: `target-id` carries control-level granularity, not true per-objective ids — a future catalog-join could refine that.
 - **Auditor narrative renderer** — Markdown prose from `AssessmentReport`; human-readable judgment summaries per control (`src/output/narrative.ts`)

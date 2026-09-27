@@ -2,6 +2,7 @@ import { describe, it, expect } from "bun:test";
 import { resolve } from "node:path";
 import { assessControl } from "./agent.js";
 import { FixtureProvider } from "../providers/fixture-provider.js";
+import { awsSageMakerProvider } from "../providers/aws-sagemaker.js";
 import { AnthropicProvider } from "../llm/anthropic-provider.js";
 import { loadControlSet } from "../loaders/control-loader.js";
 
@@ -24,7 +25,7 @@ describe("assessControl — integration (requires ANTHROPIC_API_KEY)", () => {
         await Bun.file(CLEAN_TARGET_PATH).text()
       ) as { modelName: string; endpointName: string };
 
-      const provider = new FixtureProvider(CLEAN_TARGET_PATH);
+      const provider = awsSageMakerProvider(new FixtureProvider(CLEAN_TARGET_PATH));
       const llm = new AnthropicProvider();
 
       const result = await assessControl(driftControl!, cleanFixture, provider, llm);
@@ -51,7 +52,7 @@ describe("assessControl — integration (requires ANTHROPIC_API_KEY)", () => {
         await Bun.file(STALE_TARGET_PATH).text()
       ) as { modelName: string; endpointName: string };
 
-      const provider = new FixtureProvider(STALE_TARGET_PATH);
+      const provider = awsSageMakerProvider(new FixtureProvider(STALE_TARGET_PATH));
       const llm = new AnthropicProvider();
 
       const result = await assessControl(driftControl!, staleFixture, provider, llm);

@@ -1,5 +1,5 @@
-import type { ControlItem, AssessmentTarget, Judgment } from "../types.js";
-import type { AwsProvider } from "../providers/aws-provider.interface.js";
+import type { ControlItem, AssessmentTarget, Judgment, RawEvidence } from "../types.js";
+import type { EvidenceProvider } from "../providers/evidence-provider.interface.js";
 import { EvidenceStore } from "../store/evidence-store.js";
 import { validateCitations } from "../guard/citation-guard.js";
 import { parseJudgment } from "../guard/judgment-validator.js";
@@ -13,8 +13,27 @@ import type { AssessControlResult } from "./agent.js";
 export type DeterministicCheckFn = (
   control: ControlItem,
   target: AssessmentTarget,
-  provider: AwsProvider
+  provider: EvidenceProvider
 ) => Promise<AssessControlResult>;
+
+/**
+ * For collectors a check expects to yield at most one item. A list here is a
+ * provider defect, and picking an element would let the rule run against
+ * evidence chosen by accident — so it throws rather than guessing.
+ */
+async function collectSingle(
+  provider: EvidenceProvider,
+  collectorName: string,
+  target: AssessmentTarget
+): Promise<RawEvidence | null> {
+  const result = await provider.collect(collectorName, target);
+  if (Array.isArray(result)) {
+    throw new Error(
+      `Collector "${collectorName}" returned a list (${result.length} items) where a deterministic check expects a single evidence item`
+    );
+  }
+  return result;
+}
 
 /**
  * Every deterministic check must run its judgment through the SAME guards the
@@ -36,7 +55,7 @@ function finalizeJudgment(judgment: Judgment, store: EvidenceStore): Judgment {
  * Reads a required string field off an evidence payload, returning `null`
  * (never `undefined`, never silently coercing) if the field is missing or
  * not a string. Silent-failure-hunter finding: an unguarded `as` cast let a
- * malformed/unexpected payload shape (e.g. a real, non-fixture AwsProvider
+ * malformed/unexpected payload shape (e.g. a real, non-fixture provider
  * returning different field names) silently evaluate `undefined === "X"` as
  * `false` and produce a confident, WRONG `not-satisfied` verdict instead of
  * an honest `insufficient-evidence` one. Every deterministic check must
@@ -79,10 +98,10 @@ function malformedEvidenceJudgment(control: ControlItem, collectorName: string, 
 async function checkSC28(
   control: ControlItem,
   target: AssessmentTarget,
-  provider: AwsProvider
+  provider: EvidenceProvider
 ): Promise<AssessControlResult> {
   const store = new EvidenceStore();
-  const raw = await provider.getKMSConfig(target);
+  const raw = await collectSingle(provider, "getKMSConfig", target);
 
   if (raw === null) {
     return {
@@ -142,10 +161,10 @@ async function checkSC28(
 async function checkSC7(
   control: ControlItem,
   target: AssessmentTarget,
-  provider: AwsProvider
+  provider: EvidenceProvider
 ): Promise<AssessControlResult> {
   const store = new EvidenceStore();
-  const raw = await provider.getEndpointNetworkConfig(target);
+  const raw = await collectSingle(provider, "getEndpointNetworkConfig", target);
 
   if (raw === null) {
     return {
