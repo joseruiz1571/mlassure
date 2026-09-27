@@ -1,13 +1,19 @@
 /**
- * The Proof-of-Control family through the output layer (M8b): the control
- * note reaches the narrative and the OSCAL finding, no SageMaker wording
- * reaches either, and a custody bundle from a PoC run verifies under format 1.
+ * The Proof-of-Control family through the output layer (M8b): each control's
+ * `notAssessed` reaches the narrative and the OSCAL finding, no SageMaker
+ * wording reaches either, a nist-subset run gains nothing new, and a custody
+ * bundle from a PoC run verifies under format 1.
  */
 import { describe, it, expect, afterAll } from "bun:test";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runPocFixture } from "../providers/poc-evidence.testkit.js";
+import { loadControlSet } from "../loaders/control-loader.js";
+import { runAssessment } from "../runner/assessment-runner.js";
+import { awsSageMakerProvider } from "../providers/aws-sagemaker.js";
+import { FixtureProvider } from "../providers/fixture-provider.js";
+import type { LlmProvider } from "../llm/llm-provider.interface.js";
 import { toNarrativeMarkdown } from "./narrative.js";
 import { toOscalAssessmentResults } from "./oscal-ar.js";
 import { writeEvidenceBundle, verifyEvidenceBundle, BUNDLE_FORMAT_VERSION } from "./bundle.js";
@@ -17,8 +23,8 @@ afterAll(() => {
   for (const d of dirs) rmSync(d, { recursive: true, force: true });
 });
 
-describe("ISC-M8b-11: every PoC control's note reaches both outputs", () => {
-  it("each result carries its note, and the narrative and OSCAL finding render it", async () => {
+describe("ISC-M8b-11: every PoC control's notAssessed reaches both outputs", () => {
+  it("each result carries its notAssessed, and the narrative and OSCAL finding render it", async () => {
     const { report, controlSet } = await runPocFixture();
     const narrative = toNarrativeMarkdown(report, controlSet);
     const oscal = toOscalAssessmentResults(report, controlSet);
@@ -26,30 +32,87 @@ describe("ISC-M8b-11: every PoC control's note reaches both outputs", () => {
 
     expect(controlSet.controls).toHaveLength(6);
     for (const c of controlSet.controls) {
-      expect(c.note).toBeDefined();
-      expect(c.note!).toMatch(/^Requirements? \(quoted\): (10\.2\.1 )?"Verify that/);
-      expect(c.note!).toMatch(/did not assess|assessed none of it/);
+      const text = c.notAssessed!;
+      expect(text).toMatch(/^Requirements? \(quoted\): (10\.2\.1 )?"Verify that/);
+      expect(text).toMatch(/did not assess|assessed none of it/);
+      expect(c.note).toBeUndefined();
       const result = report.results.find((r) => r.controlId === c.id)!;
-      expect(result.controlNote).toBe(c.note!);
-      expect(narrative).toContain(`**Control note:** ${c.note!}`);
+      expect(result.notAssessed).toBe(text);
+      expect(narrative).toContain(`**Not assessed:** ${text}`);
       const finding = findings.find((f) => f.title.startsWith(`${c.id}:`))!;
-      expect(finding.props!.filter((p) => p.name === "control-note").map((p) => p.value)).toEqual([c.note!]);
+      expect(finding.props!.filter((p) => p.name === "not-assessed").map((p) => p.value)).toEqual([text]);
     }
   });
 
-  it("the attestation callout for a PoC run does not name AWS", async () => {
+  it("a PoC run's narrative and OSCAL carry no SageMaker wording", async () => {
     const { report, controlSet } = await runPocFixture();
     const narrative = toNarrativeMarkdown(report, controlSet);
     expect(narrative).toContain("cannot be determined from automated evidence collection under any circumstance");
-    expect(narrative).not.toMatch(/AWS|SageMaker/);
-    expect(JSON.stringify(toOscalAssessmentResults(report, controlSet))).not.toMatch(/AWS|SageMaker/);
+    expect(narrative).toContain("**Target reference:** https://verifier.example/poc");
+    expect(narrative).not.toMatch(/AWS|SageMaker|Endpoint/);
+    expect(JSON.stringify(toOscalAssessmentResults(report, controlSet))).not.toMatch(/AWS|SageMaker|Endpoint/);
   });
+});
 
-  it("a report without a family keeps the SageMaker callout wording", async () => {
-    const { report, controlSet } = await runPocFixture();
-    const { family: _family, ...legacy } = report;
-    const { family: _f, ...legacySet } = controlSet;
-    expect(toNarrativeMarkdown(legacy, legacySet)).toContain("cannot be determined from automated AWS evidence under any circumstance");
+/** Submits insufficient-evidence at once, citing nothing, for whichever control it is asked about. */
+const INSTANT_LLM: LlmProvider = {
+  async complete(params) {
+    const controlId = /\nID: (.+)\n/.exec(params.systemPrompt)![1]!;
+    return {
+      stopReason: "tool_use",
+      content: [
+        {
+          type: "tool_use",
+          id: "tu-1",
+          name: "submit_judgment",
+          input: { controlId, status: "insufficient-evidence", confidence: "low", rationale: "scripted", evidenceCited: [], gaps: [] },
+        },
+      ],
+    };
+  },
+};
+
+/** Every finding prop name the OSCAL writer emitted before M8b. */
+const PRE_M8B_PROPS = new Set([
+  "source-control-id",
+  "judgment-status",
+  "confidence",
+  "pattern",
+  "evidence-coverage",
+  "coverage-confidence",
+  "gap",
+  "pattern-assigned",
+  "pattern-migration",
+]);
+
+describe("M8b adds nothing to a nist-subset run's outputs", () => {
+  it("report, narrative and OSCAL carry no new key, prop or line", async () => {
+    const controlSet = await loadControlSet("fixtures/controls/nist-subset.yaml");
+    const provider = awsSageMakerProvider(new FixtureProvider("fixtures/targets/model-clean.json"));
+    const report = await runAssessment(
+      controlSet,
+      { modelName: "fraud-detection-v2", endpointName: "fraud-detection-endpoint" },
+      provider,
+      INSTANT_LLM
+    );
+
+    expect(Object.hasOwn(report, "family")).toBe(false);
+    for (const r of report.results) expect(Object.hasOwn(r, "notAssessed")).toBe(false);
+    expect(JSON.stringify(report)).not.toContain("notAssessed");
+
+    const narrative = toNarrativeMarkdown(report, controlSet);
+    expect(narrative).not.toContain("Not assessed");
+    expect(narrative).not.toContain("Target reference");
+    expect(narrative).not.toContain("Deliberate insufficient-evidence case"); // SA-10's note stays unrendered
+    expect(narrative).toContain("**Endpoint:** fraud-detection-endpoint  ");
+    expect(narrative).toContain("cannot be determined from automated AWS evidence under any circumstance");
+
+    const oscal = toOscalAssessmentResults(report, controlSet);
+    const names = (oscal["assessment-results"].results[0]!.findings ?? []).flatMap((f) =>
+      (f.props ?? []).map((p) => p.name)
+    );
+    expect(names.length).toBeGreaterThan(0);
+    for (const name of names) expect(PRE_M8B_PROPS.has(name)).toBe(true);
   });
 });
 

@@ -307,8 +307,8 @@ describe("control loader — tagProvenance (M3f)", () => {
   });
 });
 
-describe("control loader — family and note (M8b)", () => {
-  const set = (head: string, note: string) => `
+describe("control loader — family and notAssessed (M8b)", () => {
+  const set = (head: string, extra: string) => `
 version: "0.0.1-test"
 ${head}
 controls:
@@ -317,7 +317,7 @@ controls:
     pattern: synthesis
     intent: "test control"
     collectors: []
-${note}
+${extra}
 `;
 
   it("a control set without family loads without one (every pre-M8b file)", async () => {
@@ -332,19 +332,34 @@ ${note}
     await expect(loadYaml(set(`family: ""`, ""))).rejects.toThrow(`"family" must be a non-empty string`);
   });
 
-  it("a folded note loads trimmed; interior line breaks and non-strings are rejected", async () => {
-    const folded = await loadYaml(set("", `    note: >\n      one line\n      folded\n`));
-    expect(folded.controls[0]!.note).toBe("one line folded");
-    await expect(loadYaml(set("", `    note: |\n      two\n      lines\n`))).rejects.toThrow("interior line breaks");
-    await expect(loadYaml(set("", `    note: 42\n`))).rejects.toThrow(`"note" must be a non-empty string`);
+  it("a folded notAssessed loads trimmed; empty, multi-line and non-string values are rejected", async () => {
+    const folded = await loadYaml(set("", `    notAssessed: >\n      one line\n      folded\n`));
+    expect(folded.controls[0]!.notAssessed).toBe("one line folded");
+    await expect(loadYaml(set("", `    notAssessed: |\n      two\n      lines\n`))).rejects.toThrow("interior line breaks");
+    await expect(loadYaml(set("", `    notAssessed: 42\n`))).rejects.toThrow(`"notAssessed" must be a non-empty string`);
+    await expect(loadYaml(set("", `    notAssessed: "  "\n`))).rejects.toThrow(`"notAssessed" must be a non-empty string`);
   });
 
-  it("the PoC fixture names its family and carries a note on every control", async () => {
+  it("note is loaded exactly as before M8b: verbatim, and a non-string is still dropped", async () => {
+    const multi = await loadYaml(set("", `    note: |\n      two\n      lines\n`));
+    expect(multi.controls[0]!.note).toBe("two\nlines\n");
+    expect(Object.hasOwn(multi.controls[0]!, "notAssessed")).toBe(false);
+    const dropped = await loadYaml(set("", `    note: 42\n`));
+    expect(Object.hasOwn(dropped.controls[0]!, "note")).toBe(false);
+  });
+
+  it("nist-subset declares no notAssessed anywhere; SA-10 keeps its note", async () => {
+    const nist = await loadControlSet("fixtures/controls/nist-subset.yaml");
+    for (const c of nist.controls) expect(Object.hasOwn(c, "notAssessed")).toBe(false);
+    expect(nist.controls.find((c) => c.id === "SA-10")!.note).toContain("Deliberate insufficient-evidence case");
+  });
+
+  it("the PoC fixture names its family and carries notAssessed on every control", async () => {
     const poc = await loadControlSet("fixtures/controls/poc-c7-subset.yaml");
     expect(poc.family).toBe("poc-evidence");
     expect(poc.controls.map((c) => c.id)).toEqual([
       "PoC-7.7.1", "PoC-7.7.3", "PoC-7.7.5", "PoC-7.6.2", "PoC-7.3.2", "PoC-10.2",
     ]);
-    for (const c of poc.controls) expect(c.note).toBeTruthy();
+    for (const c of poc.controls) expect(c.notAssessed).toBeTruthy();
   });
 });

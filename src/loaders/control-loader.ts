@@ -192,16 +192,19 @@ function validateControl(raw: unknown, index: number): ControlItem {
     ? (c["collectors"] as string[])
     : [];
 
-  // The note is rendered as one narrative paragraph and one OSCAL prop, and
-  // an OSCAL prop value cannot hold a line break. Same rule as provenance
+  // notAssessed (M8b) is rendered as one narrative line and one OSCAL prop,
+  // and an OSCAL prop value cannot hold a line break. Same rule as provenance
   // rationales: a folded single-line scalar (>) is the authoring style.
-  if (c["note"] !== undefined) {
-    if (typeof c["note"] !== "string" || c["note"].trim() === "") {
-      throw new Error(`Control "${c["id"]}": "note" must be a non-empty string when present`);
-    }
-    if (/[\r\n]/.test(c["note"].trim())) {
+  const notAssessed = c["notAssessed"];
+  if (notAssessed !== undefined) {
+    if (typeof notAssessed !== "string" || notAssessed.trim() === "") {
       throw new Error(
-        `Control "${c["id"]}": "note" contains interior line breaks — use a single-line folded scalar (>)`
+        `Control "${c["id"]}": "notAssessed" must be a non-empty string when present (got ${JSON.stringify(notAssessed)})`
+      );
+    }
+    if (/[\r\n]/.test(notAssessed.trim())) {
+      throw new Error(
+        `Control "${c["id"]}": "notAssessed" contains interior line breaks — use a single-line folded scalar (>)`
       );
     }
   }
@@ -212,8 +215,9 @@ function validateControl(raw: unknown, index: number): ControlItem {
     pattern: c["pattern"],
     intent: c["intent"],
     collectors,
+    ...(typeof c["note"] === "string" ? { note: c["note"] } : {}),
     // trim(): a folded scalar's trailing newline is serialization, not content.
-    ...(typeof c["note"] === "string" ? { note: c["note"].trim() } : {}),
+    ...(typeof notAssessed === "string" ? { notAssessed: notAssessed.trim() } : {}),
     ...(c["tagProvenance"] !== undefined
       ? {
           tagProvenance: validateTagProvenance(

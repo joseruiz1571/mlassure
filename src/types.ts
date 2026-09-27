@@ -140,12 +140,14 @@ export type ControlItem = {
   pattern: AgentPattern;
   intent: string;
   collectors: string[];
-  /**
-   * Single-line text carried into the narrative and the OSCAL finding (M8b):
-   * for a control whose requirement asks more than the evidence can show, it
-   * names the part mlassure did not assess.
-   */
   note?: string;
+  /**
+   * What the control's requirement asks that mlassure did not assess (M8b),
+   * as one line. Auditor-facing, unlike `note` (an authoring remark that is
+   * never rendered): the runner copies it onto the result and both renderers
+   * carry it, only when present.
+   */
+  notAssessed?: string;
   /**
    * Optional tag-provenance history, oldest first. Array order is
    * authoritative for the migration chain; `assigned` dates must agree

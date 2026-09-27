@@ -39,11 +39,11 @@ export type ControlResult = {
    */
   controlIntent?: string;
   /**
-   * The control's `note`, copied when the control set has one (M8b). Both
-   * renderers carry it; for a Proof-of-Control control it names what the
-   * requirement asks that mlassure did not assess.
+   * The control's `notAssessed` text, copied only when the control set has
+   * one (M8b): what the requirement asks that mlassure did not assess. Both
+   * renderers carry it. The control's `note` is never copied.
    */
-  controlNote?: string;
+  notAssessed?: string;
   /**
    * The control's declared pattern, copied at construction time. Verified
    * (M3c) to always match the pattern actually used to produce `judgment` —
@@ -254,7 +254,7 @@ export async function runAssessment(
     results.push({
       controlId: control.id,
       controlIntent: control.intent,
-      ...(control.note !== undefined ? { controlNote: control.note } : {}),
+      ...(control.notAssessed !== undefined ? { notAssessed: control.notAssessed } : {}),
       pattern: control.pattern,
       judgment,
       evidenceCount: store.size(),
