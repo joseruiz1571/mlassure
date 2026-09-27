@@ -2,7 +2,7 @@
 task: mlassure 1.0 course — M8 target generalization (generic EvidenceProvider) + Proof-of-Control control family
 slug: mlassure-1-0-course
 phase: climbing
-progress: 51/52
+progress: 52/52
 mode: algorithm
 started: 2026-09-25T07:30:00Z
 updated: 2026-09-27T21:30:00Z
@@ -1298,7 +1298,7 @@ Read for this design: `schema/poc-evidence.schema.json`, `schema/README.md`, `ch
 - [x] ISC-M8b-12: the OSCAL AR produced from a PoC run validates against NIST's 1.1.2 schema, including the control-id token form for ids like `PoC-7.7.1`. Falsifier: the existing schema test over the new output. (after: ISC-M8b-4) — evidence: `oscal-ar.schema.test.ts` "the AR from a full PoC fixture run validates…"
 - [x] ISC-M8b-13: a bundle written from a PoC run verifies with `verify-bundle`, format still "1". Falsifier: exit code 0; the 0.5.0 positive vector still verifies. (after: ISC-M8b-12) — evidence: `poc-outputs.test.ts` bundle write + verify, format "1"; `verify-bundle fixtures/bundles/positive/fraud-detection-v2-clean` → OK, 6 files
 - [x] ISC-M8b-14: README shows the PoC run end to end and `docs/proof-of-control.md` says what M8b assesses and what it does not; neither claims mlassure "has" Proof-of-Control (1.0 anti-claim 1). Falsifier: grep. (after: ISC-M8b-11) — evidence: README "Assessing Proof-of-Control evidence"; `docs/proof-of-control.md` §6 assessed / not-assessed table
-- [ ] ISC-M8b-15: full suite green, typecheck clean, branch stacked on M8a, PR open with CI green. Falsifier: `bun test`, `gh pr checks`. (after: ISC-M8b-14)
+- [x] ISC-M8b-15: full suite green, typecheck clean, branch stacked on M8a, PR open with CI green. Falsifier: `bun test`, `gh pr checks`. (after: ISC-M8b-14) — evidence: PR #4, head 945c063; CI run 36350708189: 331 pass, 4 skip, 0 fail, 335 tests (the 4th skip is the cosign test, which CI cannot run)
 
 ## Decisions (M8b, 2026-09-27)
 
