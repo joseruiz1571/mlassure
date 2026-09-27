@@ -19,7 +19,7 @@ Usage:
   mlassure --help
 
 Commands:
-  assess           Assess a target model against a control set
+  assess           Assess a target against a control set
   verify-bundle    Verify a custody bundle (integrity + completeness; signature checked separately via cosign)
 
 Options:

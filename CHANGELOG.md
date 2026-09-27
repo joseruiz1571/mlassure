@@ -17,7 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A control set may name its `family`; `runAssessment` refuses a provider of another family (`ControlSetFamilyError`), and a report from such a control set records `family`. For a report whose `family` is set and is not `aws-sagemaker`, the narrative labels `endpointName` "Target reference" instead of "Endpoint" and its attestation callout says "automated evidence collection" instead of "automated AWS evidence"; a report without `family` renders exactly as before.
 - Controls may carry `notAssessed`, a single-line statement of what the requirement asks that mlassure did not assess. When present it is copied onto the result (`notAssessed` in `report.json`), rendered as a "Not assessed" line in the narrative and a `not-assessed` prop on the OSCAL finding. `note` is unchanged and still never rendered. `nist-subset.yaml` declares no `notAssessed`, so SageMaker report, narrative and OSCAL output gain nothing (test: "M8b adds nothing to a nist-subset run's outputs").
 
-### Changed — M8b
+### Changed
+
+- CLI help: `assess` now reads "Assess a target against a control set" (was "a target model"), since a target is no longer always a model.
+— M8b
 
 - The CLI picks the provider from the target file's `family`; absent means `aws-sagemaker`, so existing target files are unaffected, and an unknown family exits 1 naming it.
 - The system prompt, first message and attestation rationale take their target-specific sentences from the provider (`EvidenceProvider.wording`); a provider without wording gets the SageMaker text, which is byte-identical to before (parity test).
