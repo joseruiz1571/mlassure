@@ -2,7 +2,7 @@
 task: mlassure 1.0 course — M8 target generalization (generic EvidenceProvider) + Proof-of-Control control family
 slug: mlassure-1-0-course
 phase: climbing
-progress: 36/52
+progress: 37/52
 mode: algorithm
 started: 2026-09-25T07:30:00Z
 updated: 2026-09-27T21:00:00Z
@@ -1252,7 +1252,7 @@ The pattern tag on a control is a vocabulary assignment. M3f makes each assignme
 - [x] ISC-M8a-6: generality is proven, not asserted: a second, non-SageMaker provider with its own collector names runs an assessment end to end with zero edits to agent, runner or tools. Falsifier: unit test using a toy family. — evidence: `evidence-provider.test.ts` toy-ledger family end to end: 3 evidence items, coverage 1
 - [x] ISC-M8a-7: full suite green at or above the 222-pass baseline, typecheck clean. Falsifier: `bun test`, `bun run typecheck`. — evidence: `bun test` 248 pass / 3 skip / 0 fail, 251 tests, 17 files; `tsc --noEmit` clean. The 3 skips are live-API tests, not run
 - [x] ISC-M8a-8: README architecture text and CHANGELOG Unreleased describe the generic provider; no doc still calls `AwsProvider` the provider interface. Falsifier: grep. — evidence: README Architecture + Implementation ledger; CHANGELOG Unreleased; `rg AwsProvider README.md` empty
-- [ ] ISC-M8a-9: branch pushed and PR open against `main` with CI green. Falsifier: `gh pr view`, `gh pr checks`.
+- [x] ISC-M8a-9: branch pushed and PR open against `main` with CI green. Falsifier: `gh pr view`, `gh pr checks`. — evidence: PR #3, head 5f15303; `gh pr checks 3` test pass (run 36348760470)
 
 ## M8a Criteria (added by the second look)
 
