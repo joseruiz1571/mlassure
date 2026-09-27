@@ -2,9 +2,11 @@
 
 Inputs for the `poc-evidence` family (M8b): evidence-token streams, one token
 per line (JSONL), and a trust-assumption disclosure. The control set that reads
-them is [`../controls/poc-c7-subset.yaml`](../controls/poc-c7-subset.yaml); the
+them is [`../../controls/poc-c7-subset.yaml`](../../controls/poc-c7-subset.yaml); the
 target descriptor that points at the clean stream is
-[`../targets/poc-stream-clean.json`](../targets/poc-stream-clean.json).
+[`../poc-stream-clean.json`](../poc-stream-clean.json). This directory sits
+beside that descriptor because a descriptor may only name files inside its own
+directory.
 
 **The streams are unsigned, and M8b verifies no signatures.** `signature` is
 optional in the standard's schema. The standard's vectors are signed with a
@@ -22,7 +24,7 @@ https://github.com/LFDT-ProofOfControl/ov-poc-standard, directory
 
 These files are modified from the originals. Each record is the vector's text
 with the `signature` line removed and line breaks and indentation removed, so
-one token is one line. [`scripts/make-poc-streams.ts`](../../scripts/make-poc-streams.ts)
+one token is one line. [`scripts/make-poc-streams.ts`](../../../scripts/make-poc-streams.ts)
 does exactly that from a checkout of the standard at that commit, checks each
 source file's sha256 first, and builds records as text so the duplicate key
 survives. Records marked *derived* below also have the named fields changed.
@@ -56,10 +58,21 @@ this whole table.
 | `untagged-digest.jsonl` | record 0 is `negative/untagged-digest.json` | **not satisfied** | **not satisfied** | satisfied | satisfied |
 | `digest-alg-width-mismatch.jsonl` | record 0 is `negative/digest-alg-width-mismatch.json` | **not satisfied** | **not satisfied** | satisfied | satisfied |
 | `schema-invalid.jsonl` | record 0 is `negative/missing-policy-bundle-hash.json` | **not satisfied** | satisfied | satisfied | satisfied |
+| `step-index-float.jsonl` | record 2 writes `step_index` as `1.0` | satisfied | satisfied | satisfied | insufficient |
+| `lossy-number.jsonl` | record 0 writes `iat` as `1754400000.0000000001`, which a double cannot hold | insufficient | satisfied | satisfied | satisfied |
+| `blank-lines.jsonl` | not a fault: the clean records with a whitespace-only line after record 1 and two extra blank lines at the end | satisfied | satisfied | satisfied | satisfied |
 
 *Insufficient* on `duplicate-key.jsonl` is deliberate: a record with two readings
 has no single value to validate, tag-check or sequence, so those three rules say
 they could not evaluate it and 7.7.5 reports the fault.
+
+*Insufficient* on the two number streams is deliberate too. Numbers are judged by
+the form written in the record. `1.0` converts to the integer 1, so the schema
+accepts it, but it is not written as a sequence number, so 7.6.2 cannot read the
+sequence. `1754400000.0000000001` converts to `1754400000`, so the schema would be
+judging a value the record does not hold, and 7.7.1 says so instead. Blank lines
+are not records: record indexes count records, and each record also carries its
+line number and the stream's count of skipped blank lines.
 
 ## The disclosure
 

@@ -47,6 +47,19 @@ describe("parseJsonStrict (M6) — duplicate keys are violations, not last-wins"
     expect(() => parseJsonStrict(`{"a":1,"\\u0061":2}`)).toThrow(DuplicateKeyError);
   });
 
+  it("onNumber reports every number's written form and path; the parsed value is unchanged", () => {
+    const seen: [string, string][] = [];
+    const doc = `{"a":1e-324,"b":[9007199254740993,1.0],"c":{"d":-0}}`;
+    const parsed = parseJsonStrict(doc, { onNumber: (w, p) => seen.push([w, p]) });
+    expect(seen).toEqual([
+      ["1e-324", "$.a"],
+      ["9007199254740993", "$.b[0]"],
+      ["1.0", "$.b[1]"],
+      ["-0", "$.c.d"],
+    ]);
+    expect(parsed).toEqual(JSON.parse(doc));
+  });
+
   it("keeps a \"__proto__\" member as an own key, as JSON.parse does", () => {
     const doc = `{"__proto__":{"verdict":"ALLOW"},"a":1}`;
     const parsed = parseJsonStrict(doc) as Record<string, unknown>;

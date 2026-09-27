@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync, mkdtempSync, mkdirSync, symlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -11,7 +11,7 @@ import {
   POC_WORDING,
   type StreamRecordPayload,
 } from "./poc-evidence.js";
-import { DIGEST_WIDTHS, SIGNATURE_ALGS } from "./poc-evidence-rules.js";
+import { DIGEST_WIDTHS, SIGNATURE_ALGS, convertsExactly } from "./poc-evidence-rules.js";
 import { catalogProblems, type EvidenceProvider } from "./evidence-provider.interface.js";
 import { loadTarget } from "./target-loader.js";
 import { awsSageMakerProvider } from "./aws-sagemaker.js";
@@ -144,9 +144,39 @@ describe("poc-evidence provider", () => {
     expect(await records(pocProvider("empty"))).toEqual([]);
   });
 
-  it("a line that is not JSON is a record with outcome invalid-json; an interior blank line is one too", async () => {
-    const got = await records(pocProvider(tempStream([cleanLines[0]!, "", "{not json"])));
-    expect(got.map((r) => r.outcome)).toEqual(["parsed", "invalid-json", "invalid-json"]);
+  it("a line that is not JSON is a record with outcome invalid-json", async () => {
+    const got = await records(pocProvider(tempStream([cleanLines[0]!, "{not json"])));
+    expect(got.map((r) => r.outcome)).toEqual(["parsed", "invalid-json"]);
+  });
+
+  it("whitespace-only lines are skipped, counted, and never shift a record's index", async () => {
+    const got = await records(pocProvider("blank-lines"));
+    expect(got.map((r) => [r.recordIndex, r.line])).toEqual([
+      [0, 1],
+      [1, 2],
+      [2, 4],
+      [3, 5],
+    ]);
+    expect(got.every((r) => r.blankLinesSkipped === 3)).toBe(true);
+    expect(got.map((r) => r.rawText)).toEqual(cleanLines);
+  });
+
+  it("a UTF-8 byte-order mark stays in rawText and is ignored for parsing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mlassure-bom-"));
+    const path = join(dir, "bom.jsonl");
+    writeFileSync(path, Buffer.from([0xef, 0xbb, 0xbf, 0x7b, 0x7d]));
+    const [only] = await records(pocProvider(path));
+    expect(only!.rawText).toBe("﻿{}");
+    expect(only!.outcome).toBe("parsed");
+    expect(only!.outcome === "parsed" && only!.token).toEqual({});
+  });
+
+  it("every number's written form is kept beside the parsed token", async () => {
+    const [first] = await records(pocProvider("lossy-number"));
+    expect(first!.outcome === "parsed" && first!.numbers).toContainEqual({
+      path: "$.iat",
+      written: "1754400000.0000000001",
+    });
   });
 
   it("the disclosure collector returns the document text, or null when none was supplied", async () => {
@@ -157,7 +187,7 @@ describe("poc-evidence provider", () => {
 
   it("refuses a stream path that is not a file, naming it", () => {
     expect(() =>
-      pocEvidenceProvider({ stream: { path: "fixtures/poc-evidence/nope.jsonl", label: "nope.jsonl" } })
+      pocEvidenceProvider({ stream: { path: "fixtures/targets/poc-evidence/nope.jsonl", label: "nope.jsonl" } })
     ).toThrow(`stream "nope.jsonl"`);
   });
 
@@ -165,6 +195,7 @@ describe("poc-evidence provider", () => {
     expect(readStreamRecord(null)).toEqual({ problems: ["payload"] });
     expect(readStreamRecord({ recordIndex: -1, outcome: "parsed", token: {} })).toEqual({ problems: ["recordIndex"] });
     expect(readStreamRecord({ recordIndex: 0, outcome: "parsed" })).toEqual({ problems: ["token"] });
+    expect(readStreamRecord({ recordIndex: 0, outcome: "parsed", token: {} })).toEqual({ problems: ["numbers"] });
     expect(readStreamRecord({ recordIndex: 0, outcome: "resolved" })).toEqual({ problems: ["outcome"] });
   });
 });
@@ -176,15 +207,43 @@ describe("target descriptors", () => {
     expect(target.modelName).toBe("reference-agent-evidence-stream");
     const got = await records(provider);
     expect(got).toHaveLength(4);
-    expect(got[0]!.stream).toBe("../poc-evidence/streams/clean.jsonl");
+    expect(got[0]!.stream).toBe("poc-evidence/streams/clean.jsonl");
   });
 
   it("reject unknown fields and missing required ones", () => {
-    const base = { family: "poc-evidence", modelName: "s", endpointName: "i", stream: "../poc-evidence/streams/clean.jsonl" };
+    const base = { family: "poc-evidence", modelName: "s", endpointName: "i", stream: "poc-evidence/streams/clean.jsonl" };
     const at = "fixtures/targets/x.json";
     expect(() => pocProviderFromDescriptor({ ...base, disclosur: "d.md" }, at)).toThrow("unknown field(s): disclosur");
     const { stream: _omit, ...noStream } = base;
     expect(() => pocProviderFromDescriptor(noStream, at)).toThrow(`missing a non-empty string "stream"`);
+  });
+
+  it("cannot name a file outside the descriptor's directory: ../, absolute path, or a symlink out", () => {
+    const outside = mkdtempSync(join(tmpdir(), "mlassure-outside-"));
+    writeFileSync(join(outside, "secret.jsonl"), "{}\n");
+    const dir = mkdtempSync(join(tmpdir(), "mlassure-descriptor-"));
+    mkdirSync(join(dir, "sub"));
+    writeFileSync(join(dir, "sub", "ok.jsonl"), "{}\n");
+    symlinkSync(join(outside, "secret.jsonl"), join(dir, "link.jsonl"));
+    const at = join(dir, "t.json");
+    const d = (stream: string, disclosure?: string) => ({
+      family: "poc-evidence",
+      modelName: "s",
+      endpointName: "i",
+      stream,
+      ...(disclosure !== undefined ? { disclosure } : {}),
+    });
+    const rule = `must name a file inside the descriptor's directory`;
+
+    expect(() => pocProviderFromDescriptor(d("../../package.json"), at)).toThrow(rule);
+    // From the repo's own targets directory, where ../../package.json exists.
+    expect(() => pocProviderFromDescriptor(d("../../package.json"), "fixtures/targets/x.json")).toThrow(
+      `${rule}; "../../package.json" resolves to`
+    );
+    expect(() => pocProviderFromDescriptor(d(join(outside, "secret.jsonl")), at)).toThrow(`${rule}; "${join(outside, "secret.jsonl")}" is an absolute path`);
+    expect(() => pocProviderFromDescriptor(d("link.jsonl"), at)).toThrow(`${rule}; "link.jsonl" resolves to`);
+    expect(() => pocProviderFromDescriptor(d("sub/ok.jsonl", "../../package.json"), at)).toThrow(`"disclosure" ${rule}`);
+    expect(pocProviderFromDescriptor(d("sub/ok.jsonl"), at).family).toBe(POC_EVIDENCE_FAMILY);
   });
 
   it("ISC-M8b-1: an absent family selects aws-sagemaker; an unknown one is an error naming it", () => {
@@ -222,7 +281,22 @@ const EXPECTED: Record<string, Record<string, Judgment["status"]>> = {
   "untagged-digest": { "PoC-7.7.1": "not-satisfied", "PoC-7.7.3": "not-satisfied", "PoC-7.7.5": "satisfied", "PoC-7.6.2": "satisfied" },
   "digest-alg-width-mismatch": { "PoC-7.7.1": "not-satisfied", "PoC-7.7.3": "not-satisfied", "PoC-7.7.5": "satisfied", "PoC-7.6.2": "satisfied" },
   "schema-invalid": { "PoC-7.7.1": "not-satisfied", "PoC-7.7.3": "satisfied", "PoC-7.7.5": "satisfied", "PoC-7.6.2": "satisfied" },
+  "step-index-float": {
+    "PoC-7.7.1": "satisfied", // 1.0 converts exactly; the schema alone judges it
+    "PoC-7.7.3": "satisfied",
+    "PoC-7.7.5": "satisfied",
+    "PoC-7.6.2": "insufficient-evidence",
+  },
+  "lossy-number": {
+    "PoC-7.7.1": "insufficient-evidence",
+    "PoC-7.7.3": "satisfied",
+    "PoC-7.7.5": "satisfied",
+    "PoC-7.6.2": "satisfied",
+  },
+  "blank-lines": { "PoC-7.7.1": "satisfied", "PoC-7.7.3": "satisfied", "PoC-7.7.5": "satisfied", "PoC-7.6.2": "satisfied" },
 };
+
+const STREAMS_DIR = "fixtures/targets/poc-evidence/streams";
 
 async function judge(id: string, stream: string) {
   return assessControl(control(id), POC_TARGET, pocProvider(stream), NO_LLM);
@@ -248,9 +322,17 @@ describe("deterministic Proof-of-Control controls (ISC-M8b-4 to -7)", () => {
     }
   }
 
-  it("the matrix covers every fixture stream", () => {
-    const shipped = readFileSync("fixtures/poc-evidence/README.md", "utf-8");
-    for (const stream of Object.keys(EXPECTED)) expect(shipped).toContain(`${stream}.jsonl`);
+  it("the matrix and the streams on disk name the same set, in both directions", () => {
+    const onDisk = readdirSync(STREAMS_DIR)
+      .filter((f) => f.endsWith(".jsonl"))
+      .map((f) => f.slice(0, -".jsonl".length))
+      .sort();
+    const expected = Object.keys(EXPECTED).sort();
+    // A stream on disk with no expectation, or an expectation with no stream, fails here.
+    expect(onDisk.filter((s) => !expected.includes(s))).toEqual([]);
+    expect(expected.filter((s) => !onDisk.includes(s))).toEqual([]);
+    const readme = readFileSync("fixtures/targets/poc-evidence/README.md", "utf-8");
+    for (const stream of onDisk) expect(readme).toContain(`${stream}.jsonl`);
   });
 
   it("ISC-M8b-4: 7.7.1 names the record and the failing schema path", async () => {
@@ -279,7 +361,8 @@ describe("deterministic Proof-of-Control controls (ISC-M8b-4 to -7)", () => {
 
   it("ISC-M8b-5: 7.7.3 checks the sha-384 measurement and extension digests, and requires alg", async () => {
     const clean = await judge("PoC-7.7.3", "clean");
-    expect(clean.judgment.rationale).toContain("(29 digests)"); // 4 records × (6 claims + measurement), plus dispatched_snapshot_hash
+    expect(clean.judgment.rationale).toContain("(29 digests:"); // 4 records × (6 claims + measurement), plus dispatched_snapshot_hash
+    expect(clean.judgment.rationale).toContain("Every claim recognised as a digest by name");
     const noAlg = cleanLines[0]!.replace(`"alg": "EdDSA",`, "");
     const md5 = cleanLines[0]!.replace(`"agbom_digest": "sha-256:`, `"agbom_digest": "md5:`);
     const ext = cleanLines[0]!.replace(`"reason":`, `"vendor_context_digest": "abc","reason":`);
@@ -292,6 +375,74 @@ describe("deterministic Proof-of-Control controls (ISC-M8b-4 to -7)", () => {
       const r = await assessControl(control("PoC-7.7.3"), POC_TARGET, pocProvider(tempStream([line])), NO_LLM);
       expect(r.judgment.status).toBe("not-satisfied");
       expect(r.judgment.rationale).toContain(expected);
+    }
+  });
+
+  it("7.7.3 finds digests by name at any depth, top level and arrays included, naming the full path", async () => {
+    const nested = cleanLines[0]!.replace(`"reason":`, `"ext": {"inner_hash": "abc"},"reason":`);
+    const list = cleanLines[0]!.replace(`"reason":`, `"input_hashes": ["abc"],"reason":`);
+    const top = cleanLines[0]!.replace(`"nonce":`, `"payload_hash": "abc","nonce":`);
+    for (const [line, path] of [
+      [nested, "poc_claims.ext.inner_hash"],
+      [list, "poc_claims.input_hashes[0]"],
+      [top, "payload_hash"],
+    ] as const) {
+      expect(line).not.toBe(cleanLines[0]);
+      const r = await assessControl(control("PoC-7.7.3"), POC_TARGET, pocProvider(tempStream([line])), NO_LLM);
+      expect(r.judgment.status).toBe("not-satisfied");
+      expect(r.judgment.rationale).toContain(`record 0: ${path} is an untagged digest`);
+    }
+  });
+
+  it("7.7.3 has no vacuous pass: a record with alg and no digest is insufficient-evidence", async () => {
+    const line = JSON.stringify({ poc_claims: { alg: "EdDSA", step_index: 0 } });
+    const r = await assessControl(control("PoC-7.7.3"), POC_TARGET, pocProvider(tempStream([line])), NO_LLM);
+    expect(r.judgment.status).toBe("insufficient-evidence");
+    expect(r.judgment.rationale).toContain("no claim recognised as a digest by name was found in the 1 records");
+  });
+
+  it("7.7.1: a number that does not survive conversion is insufficient-evidence, naming path and written form", async () => {
+    for (const [from, to, path] of [
+      [`"iat": 1754400000,`, `"iat": 1e-324,`, "$.iat written 1e-324"],
+      [`"tree_size": 1,`, `"tree_size": 9007199254740993,`, "$.poc_claims.tree_size written 9007199254740993"],
+    ] as const) {
+      const line = cleanLines[0]!.replace(from, to);
+      expect(line).not.toBe(cleanLines[0]);
+      const r = await assessControl(control("PoC-7.7.1"), POC_TARGET, pocProvider(tempStream([line])), NO_LLM);
+      expect(r.judgment.status).toBe("insufficient-evidence");
+      expect(r.judgment.rationale).toContain(path);
+    }
+    const exact = cleanLines[0]!.replace(`"iat": 1754400000,`, `"iat": 1754400000.0,`);
+    const r = await assessControl(control("PoC-7.7.1"), POC_TARGET, pocProvider(tempStream([exact])), NO_LLM);
+    expect(r.judgment.status).toBe("satisfied"); // the schema alone judges an exact float
+  });
+
+  it("7.6.2 reads step_index only as plain decimal digits, naming the written form", async () => {
+    for (const written of ["1.0", "1e0", "1e-324"]) {
+      const lines = [...cleanLines];
+      lines[2] = lines[2]!.replace(`"step_index": 1,`, `"step_index": ${written},`);
+      const r = await assessControl(control("PoC-7.6.2"), POC_TARGET, pocProvider(tempStream(lines)), NO_LLM);
+      expect(r.judgment.status).toBe("insufficient-evidence");
+      expect(r.judgment.rationale).toContain(`record 2 writes poc_claims.step_index as ${written}, not as plain decimal digits`);
+    }
+  });
+
+  it("7.6.2 names a step above 2^53 exactly", async () => {
+    const lines = [...cleanLines];
+    lines[2] = lines[2]!.replace(`"step_index": 1,`, `"step_index": 9007199254740993,`);
+    const r = await assessControl(control("PoC-7.6.2"), POC_TARGET, pocProvider(tempStream(lines)), NO_LLM);
+    expect(r.judgment.status).toBe("not-satisfied");
+    expect(r.judgment.rationale).toContain(
+      "record 2 has step_index 9007199254740993 where 1 was expected, so steps 1–9007199254740992 are missing"
+    );
+  });
+
+  it("convertsExactly: exact values pass, underflow, overflow and precision loss fail", () => {
+    for (const w of ["0", "-0", "1", "1.0", "1e0", "0.5", "1754400000.0", "9007199254740992", "1.5e3", "0.0e999"]) {
+      expect([w, convertsExactly(w)]).toEqual([w, true]);
+    }
+    for (const w of ["1e-324", "1e400", "9007199254740993", "0.1", "1754400000.0000000001"]) {
+      expect([w, convertsExactly(w)]).toEqual([w, false]);
     }
   });
 

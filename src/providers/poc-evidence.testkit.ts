@@ -11,7 +11,7 @@ import { loadControlSet } from "../loaders/control-loader.js";
 import { runAssessment, type AssessmentReport } from "../runner/assessment-runner.js";
 
 export const POC_CONTROLS_PATH = "fixtures/controls/poc-c7-subset.yaml";
-export const POC_DISCLOSURE = "fixtures/poc-evidence/disclosure.md";
+export const POC_DISCLOSURE = "fixtures/targets/poc-evidence/disclosure.md";
 
 export const POC_TARGET: AssessmentTarget = {
   family: "poc-evidence",
@@ -20,7 +20,7 @@ export const POC_TARGET: AssessmentTarget = {
 };
 
 export function streamPath(name: string): string {
-  return `fixtures/poc-evidence/streams/${name}.jsonl`;
+  return `fixtures/targets/poc-evidence/streams/${name}.jsonl`;
 }
 
 export function pocProvider(stream: string, withDisclosure = true): EvidenceProvider {

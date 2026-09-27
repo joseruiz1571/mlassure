@@ -154,7 +154,7 @@ cosign verify-blob --bundle manifest.sig.bundle \
 
 ## Assessing Proof-of-Control evidence
 
-mlassure can assess a stream of [Proof-of-Control](https://github.com/LFDT-ProofOfControl/ov-poc-standard) evidence tokens the way it assesses a SageMaker model. The target file is a descriptor with `"family": "poc-evidence"` that points at a JSONL stream (one token per line) and, optionally, a trust-assumption disclosure; paths resolve relative to the descriptor. mlassure reads the stream's raw text and parses each record itself with a parser that refuses duplicate keys, so a token cannot reach the checks already resolved last-wins.
+mlassure can assess a stream of [Proof-of-Control](https://github.com/LFDT-ProofOfControl/ov-poc-standard) evidence tokens the way it assesses a SageMaker model. The target file is a descriptor with `"family": "poc-evidence"` that points at a JSONL stream (one token per line) and, optionally, a trust-assumption disclosure; paths resolve relative to the descriptor and must name files inside its directory, symlinks followed. mlassure reads the stream's raw text and parses each record itself with a parser that refuses duplicate keys, so a token cannot reach the checks already resolved last-wins.
 
 ```bash
 # Scaffold (no API key): loads the six controls and the target
@@ -170,13 +170,13 @@ bun run dev -- verify-bundle out/poc-bundle-<timestamp>
 | Control | Pattern | What mlassure checks in the evidence |
 |---------|---------|--------------------------------------|
 | `PoC-7.7.1` | deterministic | every record validates against the standard's own schema, pinned byte for byte at `fixtures/schemas/poc-evidence.schema.json` |
-| `PoC-7.7.3` | deterministic | every digest-typed claim carries a recognised algorithm tag at the width that tag implies, and `alg` is present |
+| `PoC-7.7.3` | deterministic | every claim recognised as a digest by key name, at any depth, carries a recognised algorithm tag at the width that tag implies, and `alg` is present; a stream with no such claim is `insufficient-evidence` |
 | `PoC-7.7.5` | deterministic | no record contains a repeated object key |
 | `PoC-7.6.2` | deterministic | per `agent_id`, `step_index` starts at 0 and rises by exactly 1 |
 | `PoC-7.3.2` | attestation | nothing: key custody is not visible in a token, so the verdict is always `insufficient-evidence` |
 | `PoC-10.2` | synthesis | the disclosure covers every claim and mechanism, with categories from the draft set (LLM judgment) |
 
-Most of these requirements are written about the deployment: *a parser rejects…*, *a verifier rejects…*, *published where a verifier can obtain it*. mlassure reads the evidence, so it assesses the evidence half and no more. Each control's `notAssessed` field quotes the requirement and names what was not assessed, and it is carried into the narrative ("Not assessed") and the OSCAL finding (`not-assessed` prop) next to the verdict. Signatures are not verified. A `satisfied` verdict here is a statement about the stream named in the control's intent; it is not a conformance claim for the system that produced the stream, and it is not a Proof-of-Control claim for anyone. [`fixtures/poc-evidence/`](fixtures/poc-evidence/README.md) holds a clean stream and eight single-fault streams derived from the standard's published vectors, with the verdict each control must give on each; [`docs/proof-of-control.md`](docs/proof-of-control.md) §6 says the same in the crosswalk.
+Most of these requirements are written about the deployment: *a parser rejects…*, *a verifier rejects…*, *published where a verifier can obtain it*. mlassure reads the evidence, so it assesses the evidence half and no more. Each control's `notAssessed` field quotes the requirement and names what was not assessed, and it is carried into the narrative ("Not assessed") and the OSCAL finding (`not-assessed` prop) next to the verdict. Signatures are not verified. A `satisfied` verdict here is a statement about the stream named in the control's intent; it is not a conformance claim for the system that produced the stream, and it is not a Proof-of-Control claim for anyone. [`fixtures/targets/poc-evidence/`](fixtures/targets/poc-evidence/README.md) holds a clean stream, ten single-fault streams and one stream padded with blank lines, derived from the standard's published vectors, with the verdict each control must give on each; [`docs/proof-of-control.md`](docs/proof-of-control.md) §6 says the same in the crosswalk.
 
 ---
 

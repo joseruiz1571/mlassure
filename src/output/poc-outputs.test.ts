@@ -8,7 +8,13 @@ import { describe, it, expect, afterAll } from "bun:test";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runPocFixture } from "../providers/poc-evidence.testkit.js";
+import {
+  runPocFixture,
+  pocProvider,
+  scriptedSynthesisLlm,
+  POC_CONTROLS_PATH,
+  POC_TARGET,
+} from "../providers/poc-evidence.testkit.js";
 import { loadControlSet } from "../loaders/control-loader.js";
 import { runAssessment } from "../runner/assessment-runner.js";
 import { awsSageMakerProvider } from "../providers/aws-sagemaker.js";
@@ -84,6 +90,19 @@ const PRE_M8B_PROPS = new Set([
   "pattern-assigned",
   "pattern-migration",
 ]);
+
+describe("report wording follows the provider when the control file is silent", () => {
+  it("PoC controls without `family:`, run on the PoC provider, still get family-neutral wording", async () => {
+    const { family: _declared, ...silent } = await loadControlSet(POC_CONTROLS_PATH);
+    expect(Object.hasOwn(silent, "family")).toBe(false);
+    const { llm } = scriptedSynthesisLlm();
+    const report = await runAssessment(silent, POC_TARGET, pocProvider("clean"), llm);
+    expect(report.family).toBe("poc-evidence");
+    const narrative = toNarrativeMarkdown(report, silent);
+    expect(narrative).not.toMatch(/AWS|SageMaker|Endpoint/);
+    expect(narrative).toContain("cannot be determined from automated evidence collection");
+  });
+});
 
 describe("M8b adds nothing to a nist-subset run's outputs", () => {
   it("report, narrative and OSCAL carry no new key, prop or line", async () => {

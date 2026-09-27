@@ -3,7 +3,7 @@
     "PoC-7.7.1": [
       {
         "name": "getEvidenceRecords",
-        "description": "Retrieves every record of the Proof-of-Control evidence stream, in stream order, one evidence item per record: its 0-based index, the record's raw text exactly as stored, and either the parsed token or why it could not be parsed (a duplicate object key, with the key and its path, or invalid JSON). Signatures are not verified.",
+        "description": "Retrieves every record of the Proof-of-Control evidence stream, in stream order, one evidence item per record: its 0-based record index (whitespace-only lines are skipped, not counted, and their number is stated), its 1-based line number, the line's raw text exactly as stored, and either the parsed token with every number's written form or why it could not be parsed (a duplicate object key, with the key and its path, or invalid JSON). Signatures are not verified.",
         "input_schema": {
           "type": "object",
           "properties": {},
@@ -14,7 +14,7 @@
     "PoC-7.7.3": [
       {
         "name": "getEvidenceRecords",
-        "description": "Retrieves every record of the Proof-of-Control evidence stream, in stream order, one evidence item per record: its 0-based index, the record's raw text exactly as stored, and either the parsed token or why it could not be parsed (a duplicate object key, with the key and its path, or invalid JSON). Signatures are not verified.",
+        "description": "Retrieves every record of the Proof-of-Control evidence stream, in stream order, one evidence item per record: its 0-based record index (whitespace-only lines are skipped, not counted, and their number is stated), its 1-based line number, the line's raw text exactly as stored, and either the parsed token with every number's written form or why it could not be parsed (a duplicate object key, with the key and its path, or invalid JSON). Signatures are not verified.",
         "input_schema": {
           "type": "object",
           "properties": {},
@@ -25,7 +25,7 @@
     "PoC-7.7.5": [
       {
         "name": "getEvidenceRecords",
-        "description": "Retrieves every record of the Proof-of-Control evidence stream, in stream order, one evidence item per record: its 0-based index, the record's raw text exactly as stored, and either the parsed token or why it could not be parsed (a duplicate object key, with the key and its path, or invalid JSON). Signatures are not verified.",
+        "description": "Retrieves every record of the Proof-of-Control evidence stream, in stream order, one evidence item per record: its 0-based record index (whitespace-only lines are skipped, not counted, and their number is stated), its 1-based line number, the line's raw text exactly as stored, and either the parsed token with every number's written form or why it could not be parsed (a duplicate object key, with the key and its path, or invalid JSON). Signatures are not verified.",
         "input_schema": {
           "type": "object",
           "properties": {},
@@ -36,7 +36,7 @@
     "PoC-7.6.2": [
       {
         "name": "getEvidenceRecords",
-        "description": "Retrieves every record of the Proof-of-Control evidence stream, in stream order, one evidence item per record: its 0-based index, the record's raw text exactly as stored, and either the parsed token or why it could not be parsed (a duplicate object key, with the key and its path, or invalid JSON). Signatures are not verified.",
+        "description": "Retrieves every record of the Proof-of-Control evidence stream, in stream order, one evidence item per record: its 0-based record index (whitespace-only lines are skipped, not counted, and their number is stated), its 1-based line number, the line's raw text exactly as stored, and either the parsed token with every number's written form or why it could not be parsed (a duplicate object key, with the key and its path, or invalid JSON). Signatures are not verified.",
         "input_schema": {
           "type": "object",
           "properties": {},
@@ -57,7 +57,7 @@
       },
       {
         "name": "getEvidenceRecords",
-        "description": "Retrieves every record of the Proof-of-Control evidence stream, in stream order, one evidence item per record: its 0-based index, the record's raw text exactly as stored, and either the parsed token or why it could not be parsed (a duplicate object key, with the key and its path, or invalid JSON). Signatures are not verified.",
+        "description": "Retrieves every record of the Proof-of-Control evidence stream, in stream order, one evidence item per record: its 0-based record index (whitespace-only lines are skipped, not counted, and their number is stated), its 1-based line number, the line's raw text exactly as stored, and either the parsed token with every number's written form or why it could not be parsed (a duplicate object key, with the key and its path, or invalid JSON). Signatures are not verified.",
         "input_schema": {
           "type": "object",
           "properties": {},

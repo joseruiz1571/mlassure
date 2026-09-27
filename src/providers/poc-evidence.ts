@@ -1,6 +1,6 @@
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync, realpathSync, statSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, resolve, sep } from "node:path";
 import type { AssessmentTarget, RawEvidence } from "../types.js";
 import {
   defineProvider,
@@ -40,28 +40,49 @@ Remember: only cite evidence IDs that appear in tool responses you receive durin
   attestationEvidence: "automated collection from an evidence stream",
 };
 
+/** A number in a record, as written in the raw text, at its strict-parser path (`$.poc_claims.step_index`). */
+export type WrittenNumber = { path: string; written: string };
+
 /**
  * One stream record as the `getEvidenceRecords` collector reports it. The
  * raw text is always kept, because the custody bundle must hold the bytes
- * that were judged: a duplicate key exists only there.
+ * that were judged: a duplicate key exists only there, and a number's
+ * written form (`1e-324`, `9007199254740993`) exists only there too.
  */
 export type StreamRecordPayload = {
   /** The stream path as the target descriptor wrote it. */
   stream: string;
-  /** 0-based position in the stream; record N is line N + 1. */
+  /** 0-based position among the stream's records; blank lines are not records. */
   recordIndex: number;
+  /** 1-based line number of this record in the stream file. */
+  line: number;
+  /** Whitespace-only lines skipped in the whole stream, so none is hidden. */
+  blankLinesSkipped: number;
+  /** The line exactly as stored, a leading byte-order mark included. */
   rawText: string;
 } & (
-  | { outcome: "parsed"; token: unknown }
+  | { outcome: "parsed"; token: unknown; numbers: WrittenNumber[] }
   | { outcome: "duplicate-key"; duplicateKey: string; duplicateKeyPath: string }
   | { outcome: "invalid-json"; error: string }
 );
 
 export type StreamRecord = { recordIndex: number } & (
-  | { outcome: "parsed"; token: unknown }
+  | { outcome: "parsed"; token: unknown; numbers: WrittenNumber[] }
   | { outcome: "duplicate-key"; key: string; path: string }
   | { outcome: "invalid-json"; error: string }
 );
+
+function readWrittenNumbers(v: unknown): WrittenNumber[] | null {
+  if (!Array.isArray(v)) return null;
+  const ok = v.every(
+    (n) =>
+      typeof n === "object" &&
+      n !== null &&
+      typeof (n as Record<string, unknown>)["path"] === "string" &&
+      typeof (n as Record<string, unknown>)["written"] === "string"
+  );
+  return ok ? (v as WrittenNumber[]) : null;
+}
 
 /**
  * Guarded reader for a `getEvidenceRecords` payload. Returns the fields a
@@ -78,10 +99,12 @@ export function readStreamRecord(
     return { problems: ["recordIndex"] };
   }
   switch (p["outcome"]) {
-    case "parsed":
-      return Object.hasOwn(p, "token")
-        ? { record: { recordIndex: index, outcome: "parsed", token: p["token"] } }
-        : { problems: ["token"] };
+    case "parsed": {
+      if (!Object.hasOwn(p, "token")) return { problems: ["token"] };
+      const numbers = readWrittenNumbers(p["numbers"]);
+      if (numbers === null) return { problems: ["numbers"] };
+      return { record: { recordIndex: index, outcome: "parsed", token: p["token"], numbers } };
+    }
     case "duplicate-key": {
       const key = p["duplicateKey"];
       const path = p["duplicateKeyPath"];
@@ -105,9 +128,14 @@ function raw(source: string, payload: unknown): RawEvidence {
   return { id: randomUUID(), source, retrievedAt: new Date().toISOString(), payload };
 }
 
-const UTF8 = new TextDecoder("utf-8", { fatal: true });
+// ignoreBOM: keep a byte-order mark in the decoded text, so rawText is what
+// is stored; parsing skips it below.
+const UTF8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+const BOM = "﻿";
+// JSON's own whitespace (RFC 8259): such a line holds no value, so it is no record.
+const BLANK = /^[ \t\r]*$/;
 
-/** Splits a JSONL stream into records; one trailing newline ends the last record, it does not start another. */
+/** Splits a JSONL stream into records. Whitespace-only lines, trailing ones included, are skipped and counted. */
 function readStream(path: string, label: string): RawEvidence[] {
   let text: string;
   try {
@@ -117,15 +145,28 @@ function readStream(path: string, label: string): RawEvidence[] {
       `Evidence stream "${label}" could not be read as UTF-8: ${err instanceof Error ? err.message : String(err)}`
     );
   }
-  if (text === "") return [];
   const lines = text.split("\n");
-  if (lines[lines.length - 1] === "") lines.pop();
+  const kept: { rawText: string; line: number }[] = [];
+  let blankLinesSkipped = 0;
+  lines.forEach((rawText, i) => {
+    const content = i === 0 && rawText.startsWith(BOM) ? rawText.slice(1) : rawText;
+    // The empty string after a final newline ends the last line; it is not a line.
+    if (i === lines.length - 1 && rawText === "") return;
+    if (BLANK.test(content)) {
+      blankLinesSkipped++;
+      return;
+    }
+    kept.push({ rawText, line: i + 1 });
+  });
 
-  return lines.map((rawText, recordIndex) => {
-    const base = { stream: label, recordIndex, rawText };
+  return kept.map(({ rawText, line }, recordIndex) => {
+    const base = { stream: label, recordIndex, line, blankLinesSkipped, rawText };
+    const content = line === 1 && rawText.startsWith(BOM) ? rawText.slice(1) : rawText;
+    const numbers: WrittenNumber[] = [];
     let payload: StreamRecordPayload;
     try {
-      payload = { ...base, outcome: "parsed", token: parseJsonStrict(rawText) };
+      const token = parseJsonStrict(content, { onNumber: (written, at) => numbers.push({ path: at, written }) });
+      payload = { ...base, outcome: "parsed", token, numbers };
     } catch (err) {
       payload =
         err instanceof DuplicateKeyError
@@ -163,7 +204,7 @@ export function pocEvidenceProvider(sources: PocSources): EvidenceProvider {
   const provider = defineProvider(POC_EVIDENCE_FAMILY, {
     getEvidenceRecords: {
       description:
-        "Retrieves every record of the Proof-of-Control evidence stream, in stream order, one evidence item per record: its 0-based index, the record's raw text exactly as stored, and either the parsed token or why it could not be parsed (a duplicate object key, with the key and its path, or invalid JSON). Signatures are not verified.",
+        "Retrieves every record of the Proof-of-Control evidence stream, in stream order, one evidence item per record: its 0-based record index (whitespace-only lines are skipped, not counted, and their number is stated), its 1-based line number, the line's raw text exactly as stored, and either the parsed token with every number's written form or why it could not be parsed (a duplicate object key, with the key and its path, or invalid JSON). Signatures are not verified.",
       run: async () => readStream(sources.stream.path, sources.stream.label),
     },
     getTrustAssumptionDisclosure: {
@@ -184,12 +225,43 @@ export function pocEvidenceProvider(sources: PocSources): EvidenceProvider {
 const DESCRIPTOR_KEYS = new Set(["family", "modelName", "endpointName", "stream", "disclosure"]);
 
 /**
+ * Resolves a path named by a descriptor, refusing anything outside the
+ * descriptor's own directory. The descriptor may come from the assessed
+ * party, and what it names is sent to the LLM and copied into the custody
+ * bundle, so it must not reach the assessor's other files: no absolute
+ * path, no `..` out, and no symlink out (checked after following links).
+ * Returns the real path, which is what is read later.
+ */
+function confined(descriptorPath: string, field: string, label: string): { path: string; label: string } {
+  const rule = `"${field}" must name a file inside the descriptor's directory`;
+  const where = `Proof-of-Control target "${descriptorPath}"`;
+  if (isAbsolute(label)) throw new Error(`${where}: ${rule}; "${label}" is an absolute path`);
+  const base = realpathSync(dirname(resolve(descriptorPath)));
+  // Lexically first, so `../` out is refused whether or not the target exists.
+  if (!resolve(base, label).startsWith(base + sep)) {
+    throw new Error(`${where}: ${rule}; "${label}" resolves to ${resolve(base, label)}`);
+  }
+  let real: string;
+  try {
+    real = realpathSync(resolve(base, label));
+  } catch {
+    throw new Error(`${where}: ${field} "${label}" (resolved to ${resolve(base, label)}) is not a readable file`);
+  }
+  // Then after following symlinks, so a link inside cannot point out.
+  if (!real.startsWith(base + sep)) {
+    throw new Error(`${where}: ${rule}; "${label}" resolves to ${real}`);
+  }
+  return { path: real, label };
+}
+
+/**
  * Builds the provider from a parsed target descriptor:
  * `{ family: "poc-evidence", modelName, endpointName, stream, disclosure? }`.
  * `modelName` names the stream and `endpointName` carries the issuer; both
  * feed the report fields every family shares. Paths resolve relative to the
- * descriptor file. Unknown keys are rejected: a misspelled `disclosure` would
- * otherwise turn into a silent "no disclosure supplied".
+ * descriptor file and must stay inside its directory. Unknown keys are
+ * rejected: a misspelled `disclosure` would otherwise turn into a silent
+ * "no disclosure supplied".
  */
 export function pocProviderFromDescriptor(
   descriptor: AssessmentTarget,
@@ -207,10 +279,10 @@ export function pocProviderFromDescriptor(
   if (d["disclosure"] !== undefined && (typeof d["disclosure"] !== "string" || d["disclosure"].trim() === "")) {
     throw new Error(`${where}: "disclosure" must be a non-empty string when present`);
   }
-  const base = dirname(descriptorPath);
-  const source = (label: string) => ({ path: resolve(base, label), label });
   return pocEvidenceProvider({
-    stream: source(d["stream"] as string),
-    ...(typeof d["disclosure"] === "string" ? { disclosure: source(d["disclosure"]) } : {}),
+    stream: confined(descriptorPath, "stream", d["stream"] as string),
+    ...(typeof d["disclosure"] === "string"
+      ? { disclosure: confined(descriptorPath, "disclosure", d["disclosure"]) }
+      : {}),
   });
 }

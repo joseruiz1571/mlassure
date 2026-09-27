@@ -24,7 +24,7 @@ controls:
     collectors:
       - getEvidenceRecords
     notAssessed: >
-      Requirement (quoted): "Verify that the evidence claim set is defined by a machine-readable schema covering every field, published where a verifier can obtain it, and that the deployed implementation's own output validates against it." mlassure validated the records it was given against the standard's own schema. It did not assess whether the deployment publishes a schema where a verifier can obtain it, whether that schema covers every field the deployment emits, or whether the stream is the deployment's own production output. The schema's format annotations (uri) are not asserted, as in the standard's reference validator.
+      Requirement (quoted): "Verify that the evidence claim set is defined by a machine-readable schema covering every field, published where a verifier can obtain it, and that the deployed implementation's own output validates against it." mlassure validated the records it was given against the standard's own schema. It did not assess whether the deployment publishes a schema where a verifier can obtain it, whether that schema covers every field the deployment emits, or whether the stream is the deployment's own production output. The schema's format annotations (uri) are not asserted, as in the standard's reference validator. A number written as a float that converts exactly, such as 1754400000.0, is judged by the schema alone; the standard's canonical-form rule forbidding floating point (C7.7.2) is not assessed.
 
   - id: "PoC-7.7.3"
     framework: "Proof-of-Control, Working Draft v0.1.4 (ov-poc-standard 22c7b62), v0.1-C7.7.3"
@@ -45,7 +45,7 @@ controls:
     collectors:
       - getEvidenceRecords
     notAssessed: >
-      Requirement (quoted): "Verify that every digest and signature carries an explicit algorithm identifier, and that a verifier presented with an unidentified digest rejects it rather than assuming an algorithm." mlassure checked the identifiers the stream carries. It did not assess whether the deployment's verifier rejects an unidentified digest, which is behaviour of that verifier, not a property of the stream. It verified no signatures: poc_claims.alg is checked for presence and value only. Digest-typed extension claims are recognised by name (_hash, _digest), so an extension digest named otherwise is not checked; hex case is canonical form (C7.7.2) and is not judged here.
+      Requirement (quoted): "Verify that every digest and signature carries an explicit algorithm identifier, and that a verifier presented with an unidentified digest rejects it rather than assuming an algorithm." mlassure checked the identifiers the stream carries. It did not assess whether the deployment's verifier rejects an unidentified digest, which is behaviour of that verifier, not a property of the stream. It verified no signatures: poc_claims.alg is checked for presence and value only. Digests are recognised by key name at any depth (_hash, _digest, and arrays under _hashes or _digests, besides the schema's digest claims), so a digest under another name is not checked; hex case is canonical form (C7.7.2) and is not judged here.
 
   - id: "PoC-7.7.5"
     framework: "Proof-of-Control, Working Draft v0.1.4 (ov-poc-standard 22c7b62), v0.1-C7.7.5"

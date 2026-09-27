@@ -21,6 +21,7 @@ import {
   ControlSetFamilyError,
 } from "../agent/agent.js";
 import { findDeterministicCheck } from "../agent/deterministic-checks.js";
+import { AWS_SAGEMAKER_FAMILY } from "../providers/aws-sagemaker.js";
 
 /** A cited evidence item retained for downstream output (OSCAL, narrative). */
 export type CitedEvidence = {
@@ -149,10 +150,11 @@ export type AssessmentReport = {
    */
   replica?: number;
   /**
-   * The family the control set declared (M8b), equal to the provider's by
-   * the preflight. Absent when the control set declares none, so reports
-   * from pre-M8b control sets keep their exact shape. The narrative reads
-   * it to word the attestation callout for the family.
+   * The target family (M8b): the control set's declared `family`, equal to
+   * the provider's by the preflight; otherwise the provider's family when it
+   * is not `aws-sagemaker`; otherwise absent, so a SageMaker report keeps its
+   * pre-M8b shape. The narrative reads it to word labels for the family, so
+   * report wording follows the provider even when the control file is silent.
    */
   family?: string;
 };
@@ -272,12 +274,14 @@ export async function runAssessment(
     });
   }
 
+  const reportFamily =
+    controlSet.family ?? (provider.family !== AWS_SAGEMAKER_FAMILY ? provider.family : undefined);
   return {
     targetName: target.modelName,
     endpointName: target.endpointName,
     controlSetVersion: controlSet.version,
     runAt: new Date().toISOString(),
     results,
-    ...(controlSet.family !== undefined ? { family: controlSet.family } : {}),
+    ...(reportFamily !== undefined ? { family: reportFamily } : {}),
   };
 }

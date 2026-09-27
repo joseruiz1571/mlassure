@@ -2,6 +2,6 @@
   "family": "poc-evidence",
   "modelName": "reference-agent-evidence-stream",
   "endpointName": "https://verifier.example/poc",
-  "stream": "../poc-evidence/streams/clean.jsonl",
-  "disclosure": "../poc-evidence/disclosure.md"
+  "stream": "poc-evidence/streams/clean.jsonl",
+  "disclosure": "poc-evidence/disclosure.md"
 }

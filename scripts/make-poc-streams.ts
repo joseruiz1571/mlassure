@@ -4,7 +4,7 @@
  *
  *   bun scripts/make-poc-streams.ts --standard <path to an ov-poc-standard checkout>
  *
- * Rewrites `fixtures/poc-evidence/streams/*.jsonl` from the standard's
+ * Rewrites `fixtures/targets/poc-evidence/streams/*.jsonl` from the standard's
  * published test vectors (`schema/vectors/`, Apache-2.0). Each source vector
  * is checked against the sha256 it had at commit 22c7b62 before it is used,
  * so the streams can only be regenerated from that revision's bytes.
@@ -16,7 +16,7 @@
  *     signature over a record changed in any way would be a forged one), and
  *   - line breaks and indentation removed, so one token is one JSONL line.
  * Derived records additionally have named fields replaced, each replacement
- * asserted to hit exactly once. `fixtures/poc-evidence/README.md` lists them.
+ * asserted to hit exactly once. `fixtures/targets/poc-evidence/README.md` lists them.
  *
  * Each negative stream is the clean stream with exactly ONE fault. The
  * script refuses to write anything if a record does not parse the way its
@@ -137,11 +137,21 @@ const STREAMS: Record<string, string[]> = {
   "untagged-digest": replaceFirst(rec("untagged-digest")),
   "digest-alg-width-mismatch": replaceFirst(rec("digest-alg-width-mismatch")),
   "schema-invalid": replaceFirst(rec("missing-policy-bundle-hash")),
+  // Numbers whose written form is not what a converted value shows.
+  // step_index written 1.0: converts to the integer 1, but is not written as one.
+  "step-index-float": [allowRead, ref2, replaceOnce("step-1.0", deny, `"step_index": 1,`, `"step_index": 1.0,`), modify],
+  // iat written with a fraction a double cannot hold: converts to 1754400000.
+  "lossy-number": replaceFirst(replaceOnce("iat", allowRead, `"iat": 1754400000,`, `"iat": 1754400000.0000000001,`)),
+  // Whitespace-only lines are not records: one mid-stream, two extra at the end.
+  "blank-lines": [allowRead, ref2, "   ", deny, modify, "", ""],
 };
+
+const BLANK = /^[ \t\r]*$/;
 
 for (const [stream, records] of Object.entries(STREAMS)) {
   records.forEach((line, i) => {
-    const where = `${stream}.jsonl record ${i}`;
+    if (BLANK.test(line)) return;
+    const where = `${stream}.jsonl line ${i + 1}`;
     const isDuplicate = stream === "duplicate-key" && i === 0;
     let parsed: unknown;
     try {
@@ -158,10 +168,11 @@ for (const [stream, records] of Object.entries(STREAMS)) {
   });
 }
 
-const outDir = join(import.meta.dir, "..", "fixtures", "poc-evidence", "streams");
+const outDir = join(import.meta.dir, "..", "fixtures", "targets", "poc-evidence", "streams");
 mkdirSync(outDir, { recursive: true });
 for (const [stream, records] of Object.entries(STREAMS)) {
   const text = records.map((r) => `${r}\n`).join("");
   writeFileSync(join(outDir, `${stream}.jsonl`), text, "utf-8");
-  console.log(`  ${stream}.jsonl  ${records.length} record(s)`);
+  const blank = records.filter((r) => BLANK.test(r)).length;
+  console.log(`  ${stream}.jsonl  ${records.length - blank} record(s)${blank > 0 ? `, ${blank} blank line(s)` : ""}`);
 }

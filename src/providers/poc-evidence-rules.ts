@@ -75,16 +75,62 @@ function schemaValidator(): ValidateFunction {
   return validator;
 }
 
+/**
+ * Whether the number written as `written` (JSON number grammar) is exactly
+ * the IEEE-754 double `Number(written)` gives. False on overflow (Infinity),
+ * underflow (`1e-324` → 0) and precision loss (`9007199254740993` → …992).
+ * `1754400000.0` is exact: its value, not its spelling, is what converts.
+ * Compared as integers with BigInt, so the test itself loses nothing.
+ */
+export function convertsExactly(written: string): boolean {
+  const m = /^-?(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(written);
+  if (m === null) return false;
+  const value = Number(written);
+  if (!Number.isFinite(value)) return false;
+  const digits = `${m[1]}${m[2] ?? ""}`.replace(/^0+/, "");
+  if (digits === "") return value === 0;
+  if (value === 0) return false;
+  // Written: digits × 10^exp10. Double: mantissa × 2^exp2, read from its bits.
+  const exp10 = BigInt(m[3] ?? "0") - BigInt((m[2] ?? "").length);
+  const view = new DataView(new ArrayBuffer(8));
+  view.setFloat64(0, Math.abs(value));
+  const bits = view.getBigUint64(0);
+  const biased = Number((bits >> 52n) & 0x7ffn);
+  const fraction = bits & ((1n << 52n) - 1n);
+  const mantissa = biased === 0 ? fraction : fraction | (1n << 52n);
+  const exp2 = BigInt(biased === 0 ? -1074 : biased - 1075);
+  let left = BigInt(digits);
+  let right = mantissa;
+  if (exp10 >= 0n) left *= 10n ** exp10;
+  else right *= 10n ** -exp10;
+  if (exp2 >= 0n) right *= 2n ** exp2;
+  else left *= 2n ** -exp2;
+  return left === right;
+}
+
 export function schemaValidity(records: readonly StreamRecord[]): RuleDecision {
   const s = sorted();
   const validate = schemaValidator();
   records.forEach((r, at) => {
     if (r.outcome === "invalid-json") {
       addViolation(s, at, `${label(r)} is not a JSON document (${r.error})`);
-    } else if (r.outcome === "duplicate-key") {
+      return;
+    }
+    if (r.outcome === "duplicate-key") {
       s.undetermined.set(
         at,
         `${label(r)} has a duplicate key "${r.key}" at ${r.path}, so it has no single reading to validate (PoC-7.7.5 reports the key)`
+      );
+      return;
+    }
+    // The schema sees converted numbers. Where conversion changed a value,
+    // a pass or a fail would be about a number the record does not hold.
+    const lossy = r.numbers.filter((n) => !convertsExactly(n.written));
+    if (lossy.length > 0) {
+      s.undetermined.set(
+        at,
+        `${label(r)} holds a number whose written form does not survive conversion exactly, so the schema would judge a different value: ` +
+          lossy.map((n) => `${n.path} written ${n.written}`).join(", ")
       );
     } else if (!validate(r.token)) {
       for (const e of validate.errors ?? []) {
@@ -97,6 +143,52 @@ export function schemaValidity(records: readonly StreamRecord[]): RuleDecision {
     violated: "Not every record validates against the pinned Proof-of-Control evidence schema:",
     undetermined: "No record fails the pinned schema, but not every record could be validated:",
   });
+}
+
+// ---------------------------------------------------------------- C7.7.3 (digest discovery)
+
+const DIGEST_KEY = /_(hash|digest)$/;
+const DIGEST_LIST_KEY = /_(hashes|digests)$/;
+
+/** Paths the schema types as digests: checked whatever their value's type. */
+const SCHEMA_DIGEST_PATHS = new Set([
+  ...["agbom_digest", "chain_head", "merkle_root", "policy_bundle_hash", "canonical_snapshot_hash", "path_summary_hash"].map(
+    (c) => `poc_claims.${c}`
+  ),
+  "submods.attestation.measurement",
+]);
+
+/**
+ * Every value in the token recognised as a digest, with its path: the
+ * schema's digest claims, any string under a key ending `_hash` or
+ * `_digest`, and any string in an array under a key ending `_hashes` or
+ * `_digests`, at any depth, the token's top level included. A digest under
+ * another name is not recognised.
+ */
+function digestCandidates(token: unknown): [string, unknown][] {
+  const found: [string, unknown][] = [];
+  const visit = (value: unknown, path: string): void => {
+    if (Array.isArray(value)) {
+      value.forEach((item, i) => visit(item, `${path}[${i}]`));
+      return;
+    }
+    if (!isObject(value)) return;
+    for (const [key, item] of Object.entries(value)) {
+      const at = path === "" ? key : `${path}.${key}`;
+      if (SCHEMA_DIGEST_PATHS.has(at) || (typeof item === "string" && DIGEST_KEY.test(key))) {
+        found.push([at, item]);
+      } else if (Array.isArray(item) && DIGEST_LIST_KEY.test(key)) {
+        item.forEach((entry, i) => {
+          if (typeof entry === "string") found.push([`${at}[${i}]`, entry]);
+          else visit(entry, `${at}[${i}]`);
+        });
+      } else {
+        visit(item, at);
+      }
+    }
+  };
+  visit(token, "");
+  return found;
 }
 
 // ---------------------------------------------------------------- C7.7.3
@@ -112,16 +204,6 @@ export const DIGEST_WIDTHS: Readonly<Record<string, number>> = {
   "sha-512": 128,
   "sha3-256": 64,
 };
-
-/** The digest-typed members of `poc_claims` the schema names. */
-export const SCHEMA_DIGEST_CLAIMS = [
-  "agbom_digest",
-  "chain_head",
-  "merkle_root",
-  "policy_bundle_hash",
-  "canonical_snapshot_hash",
-  "path_summary_hash",
-] as const;
 
 /** Signature algorithms the pinned schema allows in `poc_claims.alg`. */
 export const SIGNATURE_ALGS: readonly string[] = pocSchema.$defs.pocClaims.properties.alg.enum;
@@ -153,23 +235,10 @@ export function digestIdentification(records: readonly StreamRecord[]): RuleDeci
     const token = isObject(r.token) ? r.token : {};
     const claims = isObject(token["poc_claims"]) ? token["poc_claims"] : {};
 
-    // Schema-named digest claims, plus extension claims named like digests
-    // (the claim set is open: `dispatched_snapshot_hash` is one in the
-    // standard's own vectors). An absent claim is a schema matter, not this rule's.
-    const names = new Set<string>(SCHEMA_DIGEST_CLAIMS);
-    for (const key of Object.keys(claims)) {
-      if (key.endsWith("_hash") || key.endsWith("_digest")) names.add(key);
-    }
-    const checked: [string, unknown][] = [...names]
-      .filter((n) => Object.hasOwn(claims, n))
-      .map((n) => [`poc_claims.${n}`, claims[n]]);
-    const submods = isObject(token["submods"]) ? token["submods"] : {};
-    const attestation = isObject(submods["attestation"]) ? submods["attestation"] : {};
-    if (Object.hasOwn(attestation, "measurement")) {
-      checked.push(["submods.attestation.measurement", attestation["measurement"]]);
-    }
-
-    for (const [where, value] of checked) {
+    // The claim set is open (`dispatched_snapshot_hash` is an extension in
+    // the standard's own vectors), so digests are found by name anywhere in
+    // the token. An absent schema claim is a schema matter, not this rule's.
+    for (const [where, value] of digestCandidates(token)) {
       digests++;
       const problem = digestProblem(value);
       if (problem !== null) addViolation(s, at, `${label(r)}: ${where} ${problem}`);
@@ -182,8 +251,20 @@ export function digestIdentification(records: readonly StreamRecord[]): RuleDeci
       addViolation(s, at, `${label(r)}: poc_claims.alg ${JSON.stringify(alg)} is not a signature algorithm the schema names`);
     }
   });
+  // No vacuous pass: a stream in which nothing was recognised as a digest
+  // has shown nothing about how its digests are identified.
+  if (s.violations.size === 0 && digests === 0) {
+    const undetermined = [...s.undetermined.values()];
+    const none = `no claim recognised as a digest by name was found in the ${records.length} records, so no digest was checked`;
+    return {
+      status: "insufficient-evidence",
+      rationale: `No algorithm identifier is missing or unrecognised, but ${[none, ...undetermined].join("; ")}.`,
+      gaps: [none, ...undetermined],
+      cite: records.map((_, i) => i),
+    };
+  }
   return decide(s, records, {
-    satisfied: `Every digest-typed claim in the ${records.length} records (${digests} digests) carries a recognised algorithm tag at the width that tag implies, and every record names its signature algorithm in poc_claims.alg.`,
+    satisfied: `Every claim recognised as a digest by name in the ${records.length} records (${digests} digests: the schema's digest claims, submods.attestation.measurement, and any string under a key ending _hash or _digest, or in an array under a key ending _hashes or _digests, at any depth) carries a recognised algorithm tag at the width that tag implies, and every record names its signature algorithm in poc_claims.alg.`,
     violated: "Not every digest or signature in the stream carries a usable algorithm identifier:",
     undetermined: "No identified digest is malformed, but not every record could be read:",
   });
@@ -217,7 +298,11 @@ export function duplicateKeys(records: readonly StreamRecord[]): RuleDecision {
  */
 export function stepContinuity(records: readonly StreamRecord[]): RuleDecision {
   const s = sorted();
-  const steps: { at: number; agent: string; step: number; r: StreamRecord }[] = [];
+  // Steps are read from their WRITTEN form as BigInt, never from the parsed
+  // number: `1.0`, `1e0` and `1e-324` all convert to integers, and a step
+  // above 2^53 converts to a neighbour, so the converted value would report
+  // a sequence the record does not hold.
+  const steps: { at: number; agent: string; step: bigint; r: StreamRecord }[] = [];
   records.forEach((r, at) => {
     if (r.outcome !== "parsed") {
       s.undetermined.set(at, `${label(r)} could not be parsed (${r.outcome}), so its agent and step are unknown`);
@@ -226,12 +311,17 @@ export function stepContinuity(records: readonly StreamRecord[]): RuleDecision {
     const token = isObject(r.token) ? r.token : {};
     const claims = isObject(token["poc_claims"]) ? token["poc_claims"] : {};
     const agent = claims["agent_id"];
-    const step = claims["step_index"];
-    if (typeof agent !== "string" || agent === "" || typeof step !== "number" || !Number.isInteger(step) || step < 0) {
-      s.undetermined.set(at, `${label(r)} lacks a readable poc_claims.agent_id and non-negative integer poc_claims.step_index`);
+    const forms = r.numbers.filter((n) => n.path === "$.poc_claims.step_index").map((n) => n.written);
+    if (typeof agent !== "string" || agent === "" || typeof claims["step_index"] !== "number" || forms.length !== 1) {
+      s.undetermined.set(at, `${label(r)} lacks a readable poc_claims.agent_id and a single numeric poc_claims.step_index`);
       return;
     }
-    steps.push({ at, agent, step, r });
+    const written = forms[0]!;
+    if (!/^[0-9]+$/.test(written)) {
+      s.undetermined.set(at, `${label(r)} writes poc_claims.step_index as ${written}, not as plain decimal digits`);
+      return;
+    }
+    steps.push({ at, agent, step: BigInt(written), r });
   });
   if (s.undetermined.size > 0) {
     const undetermined = [...s.undetermined.values()];
@@ -243,14 +333,14 @@ export function stepContinuity(records: readonly StreamRecord[]): RuleDecision {
     };
   }
 
-  const last = new Map<string, number>();
+  const last = new Map<string, bigint>();
   for (const { at, agent, step, r } of steps) {
     const prev = last.get(agent);
-    const expected = prev === undefined ? 0 : prev + 1;
+    const expected = prev === undefined ? 0n : prev + 1n;
     if (step === expected) {
       last.set(agent, step);
     } else if (step > expected) {
-      const missing = step - 1 === expected ? `step ${expected} is missing` : `steps ${expected}–${step - 1} are missing`;
+      const missing = step - 1n === expected ? `step ${expected} is missing` : `steps ${expected}–${step - 1n} are missing`;
       addViolation(s, at, `agent ${agent}: ${label(r)} has step_index ${step} where ${expected} was expected, so ${missing}`);
       last.set(agent, step);
     } else if (step === prev) {
