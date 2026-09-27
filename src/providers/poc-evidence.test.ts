@@ -1,0 +1,454 @@
+import { describe, it, expect } from "bun:test";
+import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import {
+  pocEvidenceProvider,
+  pocProviderFromDescriptor,
+  readStreamRecord,
+  POC_EVIDENCE_FAMILY,
+  POC_WORDING,
+  type StreamRecordPayload,
+} from "./poc-evidence.js";
+import { DIGEST_WIDTHS, SIGNATURE_ALGS } from "./poc-evidence-rules.js";
+import { catalogProblems, type EvidenceProvider } from "./evidence-provider.interface.js";
+import { loadTarget } from "./target-loader.js";
+import { awsSageMakerProvider } from "./aws-sagemaker.js";
+import { FixtureProvider } from "./fixture-provider.js";
+import {
+  POC_CONTROLS_PATH,
+  POC_TARGET,
+  pocProvider,
+  runPocFixture,
+  scriptedSynthesisLlm,
+  streamPath,
+} from "./poc-evidence.testkit.js";
+import { loadControlSet } from "../loaders/control-loader.js";
+import { assessControl, ControlSetFamilyError } from "../agent/agent.js";
+import { buildSystemPrompt, buildInitialMessage } from "../agent/prompts.js";
+import { buildToolDefs, SUBMIT_JUDGMENT_TOOL } from "../tools/registry.js";
+import { runAssessment } from "../runner/assessment-runner.js";
+import { CitationError } from "../guard/citation-guard.js";
+import type { LlmProvider } from "../llm/llm-provider.interface.js";
+import type { ControlItem, Judgment, RawEvidence } from "../types.js";
+
+const SCHEMA_PATH = "fixtures/schemas/poc-evidence.schema.json";
+const PINNED_SCHEMA_SHA256 = "92fe52b1a7f177fafc5d489aa560f50782f3fe6b45aa705e0371495062c3f32c";
+const PINNED_COMMIT = "22c7b625be459f5eee7dd8690afd080b5141b8c6";
+
+const controlSet = await loadControlSet(POC_CONTROLS_PATH);
+function control(id: string): ControlItem {
+  const c = controlSet.controls.find((x) => x.id === id);
+  if (!c) throw new Error(`fixture control set has no ${id}`);
+  return c;
+}
+
+/** Any LLM call from a code-run control is a defect. */
+const NO_LLM: LlmProvider = {
+  async complete() {
+    throw new Error("a code-run control called the LLM");
+  },
+};
+
+async function records(provider: EvidenceProvider): Promise<StreamRecordPayload[]> {
+  const result = (await provider.collect("getEvidenceRecords", POC_TARGET)) as RawEvidence[];
+  return result.map((e) => e.payload as StreamRecordPayload);
+}
+
+function tempStream(lines: string[]): string {
+  const dir = mkdtempSync(join(tmpdir(), "mlassure-poc-"));
+  const path = join(dir, "stream.jsonl");
+  writeFileSync(path, lines.map((l) => `${l}\n`).join(""), "utf-8");
+  return path;
+}
+
+const cleanLines = readFileSync(streamPath("clean"), "utf-8").trimEnd().split("\n");
+
+describe("ISC-M8b-3: the vendored Proof-of-Control schema is pinned", () => {
+  const bytes = readFileSync(SCHEMA_PATH);
+
+  it("is byte-identical to the standard's file at the pinned commit", () => {
+    expect(createHash("sha256").update(bytes).digest("hex")).toBe(PINNED_SCHEMA_SHA256);
+  });
+
+  it("a one-byte change breaks the pin", () => {
+    const changed = Buffer.from(bytes);
+    changed[changed.length - 2] = changed[changed.length - 2]! ^ 1;
+    expect(createHash("sha256").update(changed).digest("hex")).not.toBe(PINNED_SCHEMA_SHA256);
+  });
+
+  it("records source, commit, license and sha256 beside it", () => {
+    const notice = readFileSync("fixtures/schemas/poc-evidence.schema.NOTICE.md", "utf-8");
+    for (const needle of [
+      "https://github.com/LFDT-ProofOfControl/ov-poc-standard",
+      "schema/poc-evidence.schema.json",
+      PINNED_COMMIT,
+      "Apache License, Version 2.0",
+      PINNED_SCHEMA_SHA256,
+    ]) {
+      expect(notice).toContain(needle);
+    }
+  });
+
+  it("the 7.7.3 tag table is the schema's own digest pattern", () => {
+    const schema = JSON.parse(bytes.toString("utf-8")) as {
+      $defs: { digest: { pattern: string } };
+    };
+    const rebuilt = `^(${Object.entries(DIGEST_WIDTHS)
+      .map(([tag, width]) => `${tag}:[0-9a-f]{${width}}`)
+      .join("|")})$`;
+    expect(rebuilt).toBe(schema.$defs.digest.pattern);
+    expect(SIGNATURE_ALGS).toContain("EdDSA");
+  });
+});
+
+describe("poc-evidence provider", () => {
+  it("offers a usable catalog and the family's own wording", () => {
+    const provider = pocProvider("clean");
+    expect(provider.family).toBe(POC_EVIDENCE_FAMILY);
+    expect(Object.keys(provider.collectors).sort()).toEqual([
+      "getEvidenceRecords",
+      "getTrustAssumptionDisclosure",
+    ]);
+    expect(catalogProblems(provider)).toEqual([]);
+    expect(provider.wording).toBe(POC_WORDING);
+  });
+
+  it("returns one evidence item per record, keeping the raw text of each line", async () => {
+    const got = await records(pocProvider("clean"));
+    expect(got.map((r) => r.recordIndex)).toEqual([0, 1, 2, 3]);
+    expect(got.map((r) => r.rawText)).toEqual(cleanLines);
+    expect(got.every((r) => r.outcome === "parsed")).toBe(true);
+    expect(got[0]!.stream).toBe(streamPath("clean"));
+  });
+
+  it("fixture records are unsigned", async () => {
+    for (const r of await records(pocProvider("clean"))) {
+      expect(r.outcome === "parsed" && Object.hasOwn(r.token as object, "signature")).toBe(false);
+    }
+  });
+
+  it("ISC-M8b-2: a duplicate key is reported with key, path and record index, never resolved", async () => {
+    const [first] = await records(pocProvider("duplicate-key"));
+    expect(first!.outcome).toBe("duplicate-key");
+    expect(first).toMatchObject({ recordIndex: 0, duplicateKey: "verdict", duplicateKeyPath: "$.poc_claims" });
+    expect(Object.hasOwn(first!, "token")).toBe(false);
+    // What a last-wins reader does with the same bytes: accepts them, silently.
+    const laundered = JSON.parse(first!.rawText) as { poc_claims: { verdict: string } };
+    expect(laundered.poc_claims.verdict).toBe("ALLOW");
+    expect(first!.rawText).toContain(`"verdict": "DENY"`); // the reading a first-wins parser keeps
+  });
+
+  it("an empty stream is zero records, not an error", async () => {
+    expect(await records(pocProvider("empty"))).toEqual([]);
+  });
+
+  it("a line that is not JSON is a record with outcome invalid-json; an interior blank line is one too", async () => {
+    const got = await records(pocProvider(tempStream([cleanLines[0]!, "", "{not json"])));
+    expect(got.map((r) => r.outcome)).toEqual(["parsed", "invalid-json", "invalid-json"]);
+  });
+
+  it("the disclosure collector returns the document text, or null when none was supplied", async () => {
+    const withIt = (await pocProvider("clean").collect("getTrustAssumptionDisclosure", POC_TARGET)) as RawEvidence;
+    expect((withIt.payload as { text: string }).text).toContain("## Claim register");
+    expect(await pocProvider("clean", false).collect("getTrustAssumptionDisclosure", POC_TARGET)).toBeNull();
+  });
+
+  it("refuses a stream path that is not a file, naming it", () => {
+    expect(() =>
+      pocEvidenceProvider({ stream: { path: "fixtures/poc-evidence/nope.jsonl", label: "nope.jsonl" } })
+    ).toThrow(`stream "nope.jsonl"`);
+  });
+
+  it("the guarded reader names what is missing instead of casting", () => {
+    expect(readStreamRecord(null)).toEqual({ problems: ["payload"] });
+    expect(readStreamRecord({ recordIndex: -1, outcome: "parsed", token: {} })).toEqual({ problems: ["recordIndex"] });
+    expect(readStreamRecord({ recordIndex: 0, outcome: "parsed" })).toEqual({ problems: ["token"] });
+    expect(readStreamRecord({ recordIndex: 0, outcome: "resolved" })).toEqual({ problems: ["outcome"] });
+  });
+});
+
+describe("target descriptors", () => {
+  it("resolve stream and disclosure relative to the descriptor file", async () => {
+    const { target, provider } = loadTarget("fixtures/targets/poc-stream-clean.json");
+    expect(provider.family).toBe(POC_EVIDENCE_FAMILY);
+    expect(target.modelName).toBe("reference-agent-evidence-stream");
+    const got = await records(provider);
+    expect(got).toHaveLength(4);
+    expect(got[0]!.stream).toBe("../poc-evidence/streams/clean.jsonl");
+  });
+
+  it("reject unknown fields and missing required ones", () => {
+    const base = { family: "poc-evidence", modelName: "s", endpointName: "i", stream: "../poc-evidence/streams/clean.jsonl" };
+    const at = "fixtures/targets/x.json";
+    expect(() => pocProviderFromDescriptor({ ...base, disclosur: "d.md" }, at)).toThrow("unknown field(s): disclosur");
+    const { stream: _omit, ...noStream } = base;
+    expect(() => pocProviderFromDescriptor(noStream, at)).toThrow(`missing a non-empty string "stream"`);
+  });
+
+  it("ISC-M8b-1: an absent family selects aws-sagemaker; an unknown one is an error naming it", () => {
+    expect(loadTarget("fixtures/targets/model-clean.json").provider.family).toBe("aws-sagemaker");
+    const dir = mkdtempSync(join(tmpdir(), "mlassure-target-"));
+    const path = join(dir, "t.json");
+    writeFileSync(path, JSON.stringify({ family: "poc-evidnce", modelName: "x", endpointName: "y" }));
+    expect(() => loadTarget(path)).toThrow(`unknown family "poc-evidnce"`);
+  });
+});
+
+/**
+ * The verdict of each deterministic control on each fixture stream. Every
+ * negative stream breaks one rule; where one fault is visible to two rules
+ * (an untagged digest also fails the schema pattern), both are listed.
+ */
+const EXPECTED: Record<string, Record<string, Judgment["status"]>> = {
+  //                            7.7.1                     7.7.3                     7.7.5                     7.6.2
+  clean: { "PoC-7.7.1": "satisfied", "PoC-7.7.3": "satisfied", "PoC-7.7.5": "satisfied", "PoC-7.6.2": "satisfied" },
+  empty: {
+    "PoC-7.7.1": "insufficient-evidence",
+    "PoC-7.7.3": "insufficient-evidence",
+    "PoC-7.7.5": "insufficient-evidence",
+    "PoC-7.6.2": "insufficient-evidence",
+  },
+  "step-gap": { "PoC-7.7.1": "satisfied", "PoC-7.7.3": "satisfied", "PoC-7.7.5": "satisfied", "PoC-7.6.2": "not-satisfied" },
+  "step-repeat": { "PoC-7.7.1": "satisfied", "PoC-7.7.3": "satisfied", "PoC-7.7.5": "satisfied", "PoC-7.6.2": "not-satisfied" },
+  "step-descending": { "PoC-7.7.1": "satisfied", "PoC-7.7.3": "satisfied", "PoC-7.7.5": "satisfied", "PoC-7.6.2": "not-satisfied" },
+  "duplicate-key": {
+    "PoC-7.7.1": "insufficient-evidence",
+    "PoC-7.7.3": "insufficient-evidence",
+    "PoC-7.7.5": "not-satisfied",
+    "PoC-7.6.2": "insufficient-evidence",
+  },
+  "untagged-digest": { "PoC-7.7.1": "not-satisfied", "PoC-7.7.3": "not-satisfied", "PoC-7.7.5": "satisfied", "PoC-7.6.2": "satisfied" },
+  "digest-alg-width-mismatch": { "PoC-7.7.1": "not-satisfied", "PoC-7.7.3": "not-satisfied", "PoC-7.7.5": "satisfied", "PoC-7.6.2": "satisfied" },
+  "schema-invalid": { "PoC-7.7.1": "not-satisfied", "PoC-7.7.3": "satisfied", "PoC-7.7.5": "satisfied", "PoC-7.6.2": "satisfied" },
+};
+
+async function judge(id: string, stream: string) {
+  return assessControl(control(id), POC_TARGET, pocProvider(stream), NO_LLM);
+}
+
+describe("deterministic Proof-of-Control controls (ISC-M8b-4 to -7)", () => {
+  for (const [stream, row] of Object.entries(EXPECTED)) {
+    for (const [id, status] of Object.entries(row)) {
+      it(`${id} on ${stream}.jsonl → ${status}`, async () => {
+        const result = await judge(id, stream);
+        expect(result.judgment.status).toBe(status);
+        expect(result.judgment.confidence).toBe("high");
+        expect(result.iterations).toBe(0);
+        expect([...result.calledCollectors]).toEqual(["getEvidenceRecords"]);
+        for (const cited of result.judgment.evidenceCited) expect(result.store.has(cited)).toBe(true);
+        if (status === "satisfied") {
+          expect(result.judgment.evidenceCited).toHaveLength(result.store.size());
+          expect(result.judgment.gaps).toEqual([]);
+        } else {
+          expect(result.judgment.gaps.length).toBeGreaterThan(0);
+        }
+      });
+    }
+  }
+
+  it("the matrix covers every fixture stream", () => {
+    const shipped = readFileSync("fixtures/poc-evidence/README.md", "utf-8");
+    for (const stream of Object.keys(EXPECTED)) expect(shipped).toContain(`${stream}.jsonl`);
+  });
+
+  it("ISC-M8b-4: 7.7.1 names the record and the failing schema path", async () => {
+    const { judgment } = await judge("PoC-7.7.1", "schema-invalid");
+    expect(judgment.rationale).toContain("record 0 fails the schema at /poc_claims");
+    expect(judgment.rationale).toContain("policy_bundle_hash");
+    expect(judgment.rationale).toContain("schema path #/required");
+  });
+
+  it("ISC-M8b-4: 7.7.1 on a line that is not JSON is not-satisfied", async () => {
+    const r = await assessControl(control("PoC-7.7.1"), POC_TARGET, pocProvider(tempStream(["{not json"])), NO_LLM);
+    expect(r.judgment.status).toBe("not-satisfied");
+    expect(r.judgment.rationale).toContain("record 0 is not a JSON document");
+  });
+
+  it("ISC-M8b-5: 7.7.3 names the claim for an untagged digest and for a width mismatch", async () => {
+    const untagged = await judge("PoC-7.7.3", "untagged-digest");
+    expect(untagged.judgment.rationale).toContain(
+      "record 0: poc_claims.chain_head is an untagged digest (no algorithm identifier)"
+    );
+    const width = await judge("PoC-7.7.3", "digest-alg-width-mismatch");
+    expect(width.judgment.rationale).toContain(
+      "record 0: poc_claims.chain_head is tagged sha-384, which implies 96 hex characters, but carries 64"
+    );
+  });
+
+  it("ISC-M8b-5: 7.7.3 checks the sha-384 measurement and extension digests, and requires alg", async () => {
+    const clean = await judge("PoC-7.7.3", "clean");
+    expect(clean.judgment.rationale).toContain("(29 digests)"); // 4 records × (6 claims + measurement), plus dispatched_snapshot_hash
+    const noAlg = cleanLines[0]!.replace(`"alg": "EdDSA",`, "");
+    const md5 = cleanLines[0]!.replace(`"agbom_digest": "sha-256:`, `"agbom_digest": "md5:`);
+    const ext = cleanLines[0]!.replace(`"reason":`, `"vendor_context_digest": "abc","reason":`);
+    for (const [line, expected] of [
+      [noAlg, "record 0: poc_claims.alg is absent"],
+      [md5, `record 0: poc_claims.agbom_digest carries unrecognised algorithm tag "md5"`],
+      [ext, "record 0: poc_claims.vendor_context_digest is an untagged digest"],
+    ] as const) {
+      expect(line).not.toBe(cleanLines[0]);
+      const r = await assessControl(control("PoC-7.7.3"), POC_TARGET, pocProvider(tempStream([line])), NO_LLM);
+      expect(r.judgment.status).toBe("not-satisfied");
+      expect(r.judgment.rationale).toContain(expected);
+    }
+  });
+
+  it("ISC-M8b-6: 7.7.5 names the key, its path and the record", async () => {
+    const { judgment } = await judge("PoC-7.7.5", "duplicate-key");
+    expect(judgment.rationale).toContain(`record 0 contains the object key "verdict" twice at $.poc_claims`);
+  });
+
+  it("ISC-M8b-7: 7.6.2 names the gap left by deleting one record", async () => {
+    const { judgment } = await judge("PoC-7.6.2", "step-gap");
+    expect(judgment.rationale).toContain(
+      "agent did:web:example.org:agents:ref-1: record 2 has step_index 2 where 1 was expected, so step 1 is missing"
+    );
+  });
+
+  it("ISC-M8b-7: 7.6.2 names a repeated and a descending index", async () => {
+    expect((await judge("PoC-7.6.2", "step-repeat")).judgment.rationale).toContain("record 4 repeats step_index 2");
+    expect((await judge("PoC-7.6.2", "step-descending")).judgment.rationale).toContain(
+      "record 4 has step_index 1 after step_index 2, so the sequence descends"
+    );
+  });
+
+  it("ISC-M8b-7: 7.6.2 on the clean stream reports each agent's range", async () => {
+    const { judgment } = await judge("PoC-7.6.2", "clean");
+    expect(judgment.rationale).toContain("did:web:example.org:agents:ref-1 0–2");
+    expect(judgment.rationale).toContain("did:web:example.org:agents:ref-2 0–0");
+  });
+
+  it("a malformed collector payload is insufficient-evidence naming the field, not a verdict", async () => {
+    const lying: EvidenceProvider = {
+      ...pocProvider("clean"),
+      async collect() {
+        return [{ id: "ev-1", source: "poc", retrievedAt: "t", payload: { recordIndex: 0, outcome: "parsed" } }];
+      },
+    };
+    const r = await assessControl(control("PoC-7.6.2"), POC_TARGET, lying, NO_LLM);
+    expect(r.judgment.status).toBe("insufficient-evidence");
+    expect(r.judgment.gaps.join(" ")).toContain("token");
+  });
+});
+
+describe("ISC-M8b-8: PoC-7.3.2 is attestation", () => {
+  it("returns insufficient-evidence with zero LLM calls and zero collector calls", async () => {
+    const collected: string[] = [];
+    const inner = pocProvider("clean");
+    const counting: EvidenceProvider = {
+      ...inner,
+      async collect(name, target) {
+        collected.push(name);
+        return inner.collect(name, target);
+      },
+    };
+    let llmCalls = 0;
+    const llm: LlmProvider = {
+      async complete() {
+        llmCalls++;
+        throw new Error("unreachable");
+      },
+    };
+    const only = { ...controlSet, controls: [control("PoC-7.3.2")] };
+    const report = await runAssessment(only, POC_TARGET, counting, llm);
+    expect(report.results[0]!.judgment.status).toBe("insufficient-evidence");
+    expect(llmCalls).toBe(0);
+    expect(collected).toEqual([]);
+    expect(report.results[0]!.judgment.rationale).toContain("automated collection from an evidence stream");
+  });
+});
+
+describe("ISC-M8b-9: PoC-10.2 is synthesis over the disclosure", () => {
+  it("runs the agent loop over the disclosure and the records and cites only retrieved evidence", async () => {
+    const { llm, calls } = scriptedSynthesisLlm();
+    const r = await assessControl(control("PoC-10.2"), POC_TARGET, pocProvider("clean"), llm);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]!.tools.map((t) => t.name)).toEqual([
+      "getTrustAssumptionDisclosure",
+      "getEvidenceRecords",
+      "submit_judgment",
+    ]);
+    expect(r.judgment.status).toBe("satisfied");
+    expect(r.judgment.evidenceCited).toHaveLength(5); // the disclosure + four records
+    expect([...r.citedCollectors].sort()).toEqual(["getEvidenceRecords", "getTrustAssumptionDisclosure"]);
+  });
+
+  it("the citation guard rejects a phantom evidence id", async () => {
+    const { llm } = scriptedSynthesisLlm((ids) => [...ids, "phantom-id"]);
+    await expect(assessControl(control("PoC-10.2"), POC_TARGET, pocProvider("clean"), llm)).rejects.toBeInstanceOf(
+      CitationError
+    );
+  });
+});
+
+/**
+ * What the model is sent for this family, pinned like the SageMaker capture:
+ * every control's system prompt and tool definitions, and the first message.
+ */
+function pocLlmInputs() {
+  const provider = pocProvider("clean");
+  const tools: Record<string, unknown> = {};
+  const prompts: Record<string, string> = {};
+  for (const c of controlSet.controls) {
+    tools[c.id] = buildToolDefs(c.collectors, provider);
+    prompts[c.id] = buildSystemPrompt(c, POC_WORDING);
+  }
+  return { tools, prompts, initial: buildInitialMessage(POC_TARGET, POC_WORDING), submit: SUBMIT_JUDGMENT_TOOL };
+}
+
+/** SageMaker vocabulary that must not reach a Proof-of-Control prompt or report. */
+const FOREIGN = /AWS|SageMaker|endpoint|\bmodel\b/i;
+
+describe("ISC-M8b-10: prompts are family-supplied", () => {
+  it("the PoC capture matches the pinned file", () => {
+    const pinned = JSON.parse(readFileSync("fixtures/parity/poc-llm-inputs.json", "utf-8")) as unknown;
+    expect(pocLlmInputs() as unknown).toEqual(pinned);
+  });
+
+  it("no PoC prompt, tool description or first message carries SageMaker vocabulary", () => {
+    const capture = JSON.stringify(pocLlmInputs());
+    expect(capture.match(FOREIGN)).toBeNull();
+  });
+
+  it("the prompts actually sent in a PoC run use the family's wording", async () => {
+    const { calls } = await runPocFixture();
+    expect(calls.length).toBe(2);
+    expect(calls[0]!.systemPrompt).toBe(buildSystemPrompt(control("PoC-10.2"), POC_WORDING));
+    expect(JSON.stringify(calls[0]!.messages[0])).toContain("evidence stream");
+    expect(JSON.stringify(calls.map((c) => [c.systemPrompt, c.tools, c.messages[0]])).match(FOREIGN)).toBeNull();
+  });
+
+  it("no code-generated rationale or gap on any fixture stream carries SageMaker vocabulary", async () => {
+    for (const stream of Object.keys(EXPECTED)) {
+      const { report } = await runPocFixture(stream);
+      for (const r of report.results) {
+        if (r.pattern === "synthesis") continue; // scripted model text, not code-generated
+        expect(`${r.judgment.rationale} ${r.judgment.gaps.join(" ")}`.match(FOREIGN)).toBeNull();
+      }
+    }
+  });
+});
+
+describe("control-set family (M8b preflight)", () => {
+  it("a PoC control set against the SageMaker provider aborts before any control runs", async () => {
+    const sagemaker = awsSageMakerProvider(new FixtureProvider("fixtures/targets/model-clean.json"));
+    await expect(runAssessment(controlSet, POC_TARGET, sagemaker, NO_LLM)).rejects.toBeInstanceOf(
+      ControlSetFamilyError
+    );
+  });
+
+  it("a PoC run records its family on the report", async () => {
+    const { report } = await runPocFixture();
+    expect(report.family).toBe(POC_EVIDENCE_FAMILY);
+    expect(report.results.map((r) => [r.controlId, r.judgment.status])).toEqual([
+      ["PoC-7.7.1", "satisfied"],
+      ["PoC-7.7.3", "satisfied"],
+      ["PoC-7.7.5", "satisfied"],
+      ["PoC-7.6.2", "satisfied"],
+      ["PoC-7.3.2", "insufficient-evidence"],
+      ["PoC-10.2", "satisfied"],
+    ]);
+  });
+});

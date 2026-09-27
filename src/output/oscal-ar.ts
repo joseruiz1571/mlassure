@@ -110,6 +110,12 @@ function buildFinding(
     { name: "evidence-coverage", value: String(result.evidenceCoverage), ns: MLASSURE_NS },
     { name: "coverage-confidence", value: result.coverageConfidence, ns: MLASSURE_NS },
   ];
+  // M8b, additive: the control set's note. For a Proof-of-Control control it
+  // names what the requirement asks that mlassure did not assess, so a
+  // machine consumer of the finding sees the limit next to the verdict.
+  if (result.controlNote !== undefined) {
+    props.push({ name: "control-note", value: result.controlNote, ns: MLASSURE_NS });
+  }
   for (const gap of j.gaps) {
     props.push({ name: "gap", value: gap, ns: MLASSURE_NS });
   }

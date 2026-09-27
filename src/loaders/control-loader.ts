@@ -192,13 +192,28 @@ function validateControl(raw: unknown, index: number): ControlItem {
     ? (c["collectors"] as string[])
     : [];
 
+  // The note is rendered as one narrative paragraph and one OSCAL prop, and
+  // an OSCAL prop value cannot hold a line break. Same rule as provenance
+  // rationales: a folded single-line scalar (>) is the authoring style.
+  if (c["note"] !== undefined) {
+    if (typeof c["note"] !== "string" || c["note"].trim() === "") {
+      throw new Error(`Control "${c["id"]}": "note" must be a non-empty string when present`);
+    }
+    if (/[\r\n]/.test(c["note"].trim())) {
+      throw new Error(
+        `Control "${c["id"]}": "note" contains interior line breaks — use a single-line folded scalar (>)`
+      );
+    }
+  }
+
   return {
     id: c["id"],
     framework: c["framework"],
     pattern: c["pattern"],
     intent: c["intent"],
     collectors,
-    ...(typeof c["note"] === "string" ? { note: c["note"] } : {}),
+    // trim(): a folded scalar's trailing newline is serialization, not content.
+    ...(typeof c["note"] === "string" ? { note: c["note"].trim() } : {}),
     ...(c["tagProvenance"] !== undefined
       ? {
           tagProvenance: validateTagProvenance(
@@ -238,6 +253,15 @@ export async function loadControlSet(filePath: string): Promise<ControlSet> {
     );
   }
 
+  if (
+    doc["family"] !== undefined &&
+    (typeof doc["family"] !== "string" || doc["family"].trim() === "")
+  ) {
+    throw new Error(
+      `Control file "${filePath}": "family" must be a non-empty string when present (got ${JSON.stringify(doc["family"])})`
+    );
+  }
+
   const controls = (doc["controls"] as unknown[]).map((c, i) =>
     validateControl(c, i)
   );
@@ -247,6 +271,7 @@ export async function loadControlSet(filePath: string): Promise<ControlSet> {
     ...(typeof doc["description"] === "string"
       ? { description: doc["description"] }
       : {}),
+    ...(typeof doc["family"] === "string" ? { family: doc["family"] } : {}),
     controls,
   };
 }

@@ -191,3 +191,28 @@ describe("OSCAL AR official-schema conformance (ISC-104)", () => {
     );
   });
 });
+
+describe("OSCAL AR official-schema conformance — Proof-of-Control run (ISC-M8b-12)", () => {
+  it("the AR from a full PoC fixture run validates, with PoC control ids as tokens", async () => {
+    // Scripted LLM for the synthesis control; no API key involved.
+    const { runPocFixture } = await import("../providers/poc-evidence.testkit.js");
+    for (const stream of ["clean", "duplicate-key", "step-gap", "empty"]) {
+      const { report, controlSet } = await runPocFixture(stream);
+      const doc = JSON.parse(JSON.stringify(toOscalAssessmentResults(report, controlSet))) as {
+        "assessment-results": {
+          results: { "reviewed-controls": { "control-selections": { "include-controls": { "control-id": string }[] }[] } }[];
+        };
+      };
+      if (!validate(doc)) {
+        throw new Error(
+          `PoC OSCAL AR (${stream}) failed official 1.1.2 schema validation:\n` +
+            JSON.stringify(validate.errors, null, 2)
+        );
+      }
+      const ids = doc["assessment-results"].results[0]!["reviewed-controls"]["control-selections"][0]![
+        "include-controls"
+      ].map((c) => c["control-id"]);
+      expect(ids).toEqual(["poc-7.7.1", "poc-7.7.3", "poc-7.7.5", "poc-7.6.2", "poc-7.3.2", "poc-10.2"]);
+    }
+  });
+});

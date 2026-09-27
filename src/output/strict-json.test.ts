@@ -47,6 +47,14 @@ describe("parseJsonStrict (M6) — duplicate keys are violations, not last-wins"
     expect(() => parseJsonStrict(`{"a":1,"\\u0061":2}`)).toThrow(DuplicateKeyError);
   });
 
+  it("keeps a \"__proto__\" member as an own key, as JSON.parse does", () => {
+    const doc = `{"__proto__":{"verdict":"ALLOW"},"a":1}`;
+    const parsed = parseJsonStrict(doc) as Record<string, unknown>;
+    expect(Object.keys(parsed)).toEqual(["__proto__", "a"]);
+    expect(Object.getPrototypeOf(parsed)).toBe(Object.prototype);
+    expect(parsed).toEqual(JSON.parse(doc));
+  });
+
   it("rejects malformed input with a StrictJsonSyntaxError, never silently", () => {
     for (const bad of [`{"a":1,}`, `{"a" 1}`, `[1 2]`, `{"a":tru}`, `"unterminated`, `01`, `{"a":1} x`, ``]) {
       expect(() => parseJsonStrict(bad)).toThrow(StrictJsonSyntaxError);

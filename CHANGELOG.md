@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Proof-of-Control control family (M8b)
+
+- `poc-evidence` provider family (`src/providers/poc-evidence.ts`): the target is a JSONL stream of Proof-of-Control evidence tokens plus an optional trust-assumption disclosure. The target file is a descriptor (`{ family, modelName, endpointName, stream, disclosure }`, paths relative to the descriptor); the provider reads the stream's raw text and parses each record with the strict parser, so a duplicate key is reported with its key, path and record index instead of being resolved last-wins. Signatures are not verified.
+- `fixtures/controls/poc-c7-subset.yaml`: six controls. `PoC-7.7.1` (schema-valid), `PoC-7.7.3` (algorithm-tagged digests at the right width, `alg` present), `PoC-7.7.5` (no duplicate keys) and `PoC-7.6.2` (per-agent `step_index` gapless from 0) are deterministic checks with no LLM call; `PoC-7.3.2` (key custody) is attestation; `PoC-10.2` (disclosure completeness) is synthesis. Each control's `intent` states the property of the evidence that is checked, and its `note` quotes the requirement and names what mlassure did not assess.
+- `fixtures/schemas/poc-evidence.schema.json`: the standard's evidence-token schema, byte-identical to commit `22c7b62`, sha256 pinned in a test, source and license recorded beside it. Validated with ajv's 2020-12 build.
+- `fixtures/poc-evidence/`: a clean stream and eight single-fault streams derived from the standard's published vectors (unsigned; derivation in its README and `scripts/make-poc-streams.ts`), a fictional disclosure, and `fixtures/targets/poc-stream-clean.json`.
+- `fixtures/parity/poc-llm-inputs.json`: every prompt and tool definition the new family sends to the model, pinned by a test that also asserts no SageMaker vocabulary reaches them.
+- A control set may name its `family`; `runAssessment` refuses a provider of another family (`ControlSetFamilyError`), and a report from such a control set records `family`.
+- A control's `note` is now carried into the report (`controlNote`), the narrative (a "Control note" line) and the OSCAL finding (a `control-note` prop). This adds one line to the SageMaker narrative and one prop to its OSCAL for `SA-10`, the one control in `nist-subset.yaml` that has a note. A `note` must now be a single-line string.
+
+### Changed — M8b
+
+- The CLI picks the provider from the target file's `family`; absent means `aws-sagemaker`, so existing target files are unaffected, and an unknown family exits 1 naming it.
+- The system prompt, first message and attestation rationale take their target-specific sentences from the provider (`EvidenceProvider.wording`); a provider without wording gets the SageMaker text, which is byte-identical to before (parity test).
+- `ajv` moved from `devDependencies` to `dependencies`: `PoC-7.7.1` validates at runtime.
+- `tsconfig.json` sets `resolveJsonModule` so the pinned schema is imported (and bundled by `bun build`) rather than read from a path.
+
+### Fixed — M8b
+
+- `parseJsonStrict` dropped a member named `__proto__` (the assignment set the object's prototype instead of an own key); it now keeps it as `JSON.parse` does.
+
 ### Changed
 
 - Provider generalization: the agent, runner and tools now depend on a generic `EvidenceProvider` (`family`, a collector catalog, `collect(name, target)`) instead of the SageMaker-shaped `AwsProvider`. SageMaker becomes the first family (`src/providers/aws-sagemaker.ts`), adapted with `awsSageMakerProvider()`; its typed collector methods are unchanged. For a control set that loads and runs, nothing changes: tool definitions, prompts and CLI output are byte-identical. **Breaking for library callers:** `assessControl` and `runAssessment` take an `EvidenceProvider`; `executeCollector` and `DeterministicCheckFn` take an `EvidenceProvider`; `buildToolDefs` and `isKnownCollector` take the provider as a second argument; `src/providers/aws-provider.interface.ts` moved into `aws-sagemaker.ts`.

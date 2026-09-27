@@ -106,12 +106,19 @@ function renderGaps(judgment: Judgment): string | null {
  * a real but different situation that does NOT require human attestation, and
  * telling an auditor it does misdirects remediation.
  */
-function renderAttestationCallout(result: ControlResult): string | null {
+function renderAttestationCallout(result: ControlResult, family: string | undefined): string | null {
   if (result.judgment.status !== "insufficient-evidence") return null;
   if (usesAttestationCallout(result.pattern)) {
+    // M8b: the AWS wording stays for reports whose control set names no
+    // family (every pre-M8b report) or names the SageMaker family; any other
+    // family gets wording that does not claim AWS was the evidence source.
+    const source =
+      family === undefined || family === "aws-sagemaker"
+        ? "automated AWS evidence"
+        : "automated evidence collection";
     return (
       "> **Requires human attestation.** This control's pattern is `attestation` " +
-      "— conformance cannot be determined from automated AWS evidence under any " +
+      `— conformance cannot be determined from ${source} under any ` +
       "circumstance. A human reviewer must attest to this control's status directly."
     );
   }
@@ -148,7 +155,13 @@ function renderTagProvenance(result: ControlResult): string | null {
 }
 
 /** Heading format `## <controlId>: <icon> <label>` is deliberate: the colon distinguishes a control heading from the `## Summary` heading for any consumer counting per-control sections. */
-function renderControlSection(result: ControlResult): string {
+/** The control set's note (M8b), verbatim; for a Proof-of-Control control it names what was not assessed. */
+function renderNote(result: ControlResult): string | null {
+  if (result.controlNote === undefined) return null;
+  return `**Control note:** ${result.controlNote}`;
+}
+
+function renderControlSection(result: ControlResult, family: string | undefined): string {
   const j = result.judgment;
   const rationale =
     j.rationale.trim().length > 0
@@ -166,10 +179,11 @@ function renderControlSection(result: ControlResult): string {
     // hardcoding one, since M3d added a second code-determined pattern.
     `**Confidence (evidence coverage):** ${result.coverageConfidence}\n**Confidence (${isCodeDetermined(result.pattern) ? `code-determined (${result.pattern} pattern)` : "model self-reported"}):** ${j.confidence}`,
     rationale,
+    renderNote(result),
     `### Evidence\n\n${renderEvidence(result)}`,
     renderTagProvenance(result),
     renderGaps(j),
-    renderAttestationCallout(result),
+    renderAttestationCallout(result, family),
   ].filter((block): block is string => block !== null);
   return blocks.join("\n\n");
 }
@@ -199,7 +213,10 @@ export function toNarrativeMarkdown(
     `**Run at:** ${report.runAt}`,
   ].join("\n");
 
-  const sections = report.results.map(renderControlSection).join("\n\n---\n\n");
+  const family = report.family ?? controlSet?.family;
+  const sections = report.results
+    .map((r) => renderControlSection(r, family))
+    .join("\n\n---\n\n");
 
   return [header, renderSummary(report), sections].join("\n\n");
 }

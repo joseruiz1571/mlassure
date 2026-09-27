@@ -133,7 +133,15 @@ export function parseJsonStrict(text: string): unknown {
         seen.add(key);
         skipWs();
         expect(":");
-        obj[key] = parseValue(`${path}.${key}`);
+        // defineProperty, not assignment: `obj["__proto__"] = v` sets the
+        // prototype instead of an own key, so the member would vanish from
+        // the result. JSON.parse keeps it as an ordinary key; so must this.
+        Object.defineProperty(obj, key, {
+          value: parseValue(`${path}.${key}`),
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
         skipWs();
         if (text[i] === ",") {
           i++;

@@ -18,6 +18,7 @@ import {
   UnknownCollectorsError,
   DeterministicCheckFamilyError,
   InvalidCollectorCatalogError,
+  ControlSetFamilyError,
 } from "../agent/agent.js";
 import { findDeterministicCheck } from "../agent/deterministic-checks.js";
 
@@ -37,6 +38,12 @@ export type ControlResult = {
    * runAssessment always populates it.
    */
   controlIntent?: string;
+  /**
+   * The control's `note`, copied when the control set has one (M8b). Both
+   * renderers carry it; for a Proof-of-Control control it names what the
+   * requirement asks that mlassure did not assess.
+   */
+  controlNote?: string;
   /**
    * The control's declared pattern, copied at construction time. Verified
    * (M3c) to always match the pattern actually used to produce `judgment` —
@@ -141,6 +148,13 @@ export type AssessmentReport = {
    * 1-based replica index when --repeat N is used. Absent on single runs.
    */
   replica?: number;
+  /**
+   * The family the control set declared (M8b), equal to the provider's by
+   * the preflight. Absent when the control set declares none, so reports
+   * from pre-M8b control sets keep their exact shape. The narrative reads
+   * it to word the attestation callout for the family.
+   */
+  family?: string;
 };
 
 export async function runAssessment(
@@ -159,6 +173,13 @@ export async function runAssessment(
     .map((c) => c.id);
   if (missingChecks.length > 0) {
     throw new MissingDeterministicChecksError(missingChecks);
+  }
+
+  // Preflight (M8b): a control set that names its family runs against that
+  // family only. Its control ids and collector names may happen to exist in
+  // another family too; the declared family is the author's intent.
+  if (controlSet.family !== undefined && controlSet.family !== provider.family) {
+    throw new ControlSetFamilyError(controlSet.family, provider.family);
   }
 
   // Preflight (M8a): collector names and control ids are strings, so the
@@ -233,6 +254,7 @@ export async function runAssessment(
     results.push({
       controlId: control.id,
       controlIntent: control.intent,
+      ...(control.note !== undefined ? { controlNote: control.note } : {}),
       pattern: control.pattern,
       judgment,
       evidenceCount: store.size(),
@@ -256,5 +278,6 @@ export async function runAssessment(
     controlSetVersion: controlSet.version,
     runAt: new Date().toISOString(),
     results,
+    ...(controlSet.family !== undefined ? { family: controlSet.family } : {}),
   };
 }

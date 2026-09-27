@@ -140,6 +140,11 @@ export type ControlItem = {
   pattern: AgentPattern;
   intent: string;
   collectors: string[];
+  /**
+   * Single-line text carried into the narrative and the OSCAL finding (M8b):
+   * for a control whose requirement asks more than the evidence can show, it
+   * names the part mlassure did not assess.
+   */
   note?: string;
   /**
    * Optional tag-provenance history, oldest first. Array order is
@@ -153,6 +158,12 @@ export type ControlItem = {
 export type ControlSet = {
   version: string;
   description?: string;
+  /**
+   * The provider family this control set was written for (M8b). When
+   * present, `runAssessment()` refuses a provider of any other family.
+   * Optional so control sets written before M8b keep loading.
+   */
+  family?: string;
   controls: ControlItem[];
 };
 

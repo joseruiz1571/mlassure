@@ -1,6 +1,19 @@
 import type { ControlItem, AssessmentTarget, Judgment, RawEvidence } from "../types.js";
 import type { EvidenceProvider } from "../providers/evidence-provider.interface.js";
 import { AWS_SAGEMAKER_FAMILY, type AwsProvider } from "../providers/aws-sagemaker.js";
+import {
+  POC_EVIDENCE_FAMILY,
+  readStreamRecord,
+  type PocCollector,
+  type StreamRecord,
+} from "../providers/poc-evidence.js";
+import {
+  schemaValidity,
+  digestIdentification,
+  duplicateKeys,
+  stepContinuity,
+  type RuleDecision,
+} from "../providers/poc-evidence-rules.js";
 import { executeCollector } from "../tools/executor.js";
 import { EvidenceStore } from "../store/evidence-store.js";
 import { validateCitations } from "../guard/citation-guard.js";
@@ -246,6 +259,90 @@ async function checkSC7(
   };
 }
 
+const POC_RECORDS = "getEvidenceRecords" satisfies PocCollector;
+
+/** For collectors that yield one item per record: null is an empty list, a single item a list of one. */
+async function collectAll(
+  provider: EvidenceProvider,
+  collectorName: string,
+  target: AssessmentTarget
+): Promise<RawEvidence[]> {
+  const result = await executeCollector(collectorName, provider, target);
+  if (result === null) return [];
+  return Array.isArray(result) ? result : [result];
+}
+
+/**
+ * Shared shape of the four Proof-of-Control checks (M8b): collect every
+ * stream record, read each payload through the guarded reader, hand the
+ * records to a pure rule (`poc-evidence-rules.ts`), and turn its decision
+ * into a Judgment that goes through `finalizeJudgment` like every other check.
+ * The same three outcomes as `checkSC28`: nothing retrieved, malformed, evaluated.
+ */
+async function checkPocStream(
+  control: ControlItem,
+  target: AssessmentTarget,
+  provider: EvidenceProvider,
+  rule: (records: readonly StreamRecord[]) => RuleDecision
+): Promise<AssessControlResult> {
+  const store = new EvidenceStore();
+  const items = (await collectAll(provider, POC_RECORDS, target)).map((r) => store.add(r));
+  const called = new Set([POC_RECORDS]);
+
+  if (items.length === 0) {
+    return {
+      judgment: finalizeJudgment(
+        {
+          controlId: control.id,
+          status: "insufficient-evidence",
+          confidence: "high",
+          rationale:
+            "The evidence stream holds no records — there is nothing to check the rule against.",
+          evidenceCited: [],
+          gaps: ["The evidence stream is empty."],
+        },
+        store
+      ),
+      store,
+      iterations: 0,
+      calledCollectors: called,
+      citedCollectors: new Set(),
+    };
+  }
+
+  const records: StreamRecord[] = [];
+  for (const item of items) {
+    const read = readStreamRecord(item.payload);
+    if ("problems" in read) {
+      return {
+        judgment: finalizeJudgment(malformedEvidenceJudgment(control, POC_RECORDS, item.id, read.problems), store),
+        store,
+        iterations: 0,
+        calledCollectors: called,
+        citedCollectors: new Set([POC_RECORDS]),
+      };
+    }
+    records.push(read.record);
+  }
+
+  const decision = rule(records);
+  const judgment: Judgment = {
+    controlId: control.id,
+    status: decision.status,
+    confidence: "high",
+    rationale: decision.rationale,
+    evidenceCited: decision.cite.map((at) => items[at]!.id),
+    gaps: decision.gaps,
+  };
+  return {
+    judgment: finalizeJudgment(judgment, store),
+    store,
+    iterations: 0,
+    calledCollectors: called,
+    citedCollectors: judgment.evidenceCited.length > 0 ? new Set([POC_RECORDS]) : new Set(),
+  };
+}
+
 /**
  * A registered check names the family it was written for and every collector
  * it runs. Both are verified by `runAssessment()`'s preflight: control ids
@@ -266,18 +363,32 @@ function sageMakerCheck(
   return { family: AWS_SAGEMAKER_FAMILY, requires, run };
 }
 
+/** Every Proof-of-Control check reads the stream records and nothing else. */
+function pocCheck(rule: (records: readonly StreamRecord[]) => RuleDecision): DeterministicCheck {
+  return {
+    family: POC_EVIDENCE_FAMILY,
+    requires: [POC_RECORDS],
+    run: (control, target, provider) => checkPocStream(control, target, provider, rule),
+  };
+}
+
 /**
  * Per-control-ID registry, not per-pattern — each deterministic control's rule
  * is genuinely different code, mirroring how collectors are dispatched by name
  * rather than by a declarative rule DSL (no eval, no dynamic rule language
  * anywhere in this codebase; this doesn't start one).
  *
- * Scope is deliberately capped at these 2 controls (M3d advisor decision) —
- * do not add a 3rd/4th without a fresh scoping pass.
+ * M3d capped this at the two SageMaker checks pending a fresh scoping pass;
+ * the M8b scoping (one claim per check, each with its falsifier) added the
+ * four Proof-of-Control checks. A further check needs the same.
  */
 export const DETERMINISTIC_CHECKS: Record<string, DeterministicCheck> = {
   "SC-28": sageMakerCheck([KMS_CONFIG], checkSC28),
   "SC-7": sageMakerCheck([NETWORK_CONFIG], checkSC7),
+  "PoC-7.7.1": pocCheck(schemaValidity),
+  "PoC-7.7.3": pocCheck(digestIdentification),
+  "PoC-7.7.5": pocCheck(duplicateKeys),
+  "PoC-7.6.2": pocCheck(stepContinuity),
 };
 
 /** Own-property lookup: a control id of "constructor" has no check. */

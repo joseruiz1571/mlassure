@@ -1,0 +1,126 @@
+version: "0.1.0"
+family: "poc-evidence"
+description: >
+  Six Proof-of-Control requirements assessed against a stream of evidence
+  tokens and its trust-assumption disclosure. Each control states the property
+  of the evidence mlassure checks; its note quotes the requirement and names the
+  part mlassure did not assess. Requirement text is quoted from
+  checklist/poc-checklist.json of the Proof-of-Control standard (Apache-2.0),
+  Working Draft v0.1.4, repository commit 22c7b62.
+controls:
+  - id: "PoC-7.7.1"
+    framework: "Proof-of-Control, Working Draft v0.1.4 (ov-poc-standard 22c7b62), v0.1-C7.7.1"
+    pattern: deterministic
+    tagProvenance:
+      - pattern: deterministic
+        assigned: "2026-09-27"
+        rationale: >
+          Tagged at authoring (M8b): whether a JSON document validates against a published JSON Schema is decided by a validator, with no judgment in it.
+    intent: >
+      Every record in the evidence stream is a JSON document that validates
+      against the pinned Proof-of-Control evidence-token schema
+      (poc-evidence.schema.json, JSON Schema 2020-12, copied unmodified from the
+      standard's repository).
+    collectors:
+      - getEvidenceRecords
+    note: >
+      Requirement (quoted): "Verify that the evidence claim set is defined by a machine-readable schema covering every field, published where a verifier can obtain it, and that the deployed implementation's own output validates against it." mlassure validated the records it was given against the standard's own schema. It did not assess whether the deployment publishes a schema where a verifier can obtain it, whether that schema covers every field the deployment emits, or whether the stream is the deployment's own production output. The schema's format annotations (uri) are not asserted, as in the standard's reference validator.
+
+  - id: "PoC-7.7.3"
+    framework: "Proof-of-Control, Working Draft v0.1.4 (ov-poc-standard 22c7b62), v0.1-C7.7.3"
+    pattern: deterministic
+    tagProvenance:
+      - pattern: deterministic
+        assigned: "2026-09-27"
+        rationale: >
+          Tagged at authoring (M8b): an algorithm tag and the width it implies are string facts a code check reads directly.
+    intent: >
+      Every digest-typed claim in every record (the six digest claims the
+      schema names in poc_claims, submods.attestation.measurement, and any
+      extension claim in poc_claims whose name ends in _hash or _digest)
+      carries a recognised algorithm tag (sha-256, sha-384, sha-512, sha3-256)
+      followed by exactly the number of hex characters that tag implies, and
+      every record names its signature algorithm in poc_claims.alg with a value
+      the schema allows.
+    collectors:
+      - getEvidenceRecords
+    note: >
+      Requirement (quoted): "Verify that every digest and signature carries an explicit algorithm identifier, and that a verifier presented with an unidentified digest rejects it rather than assuming an algorithm." mlassure checked the identifiers the stream carries. It did not assess whether the deployment's verifier rejects an unidentified digest, which is behaviour of that verifier, not a property of the stream. It verified no signatures: poc_claims.alg is checked for presence and value only. Digest-typed extension claims are recognised by name (_hash, _digest), so an extension digest named otherwise is not checked; hex case is canonical form (C7.7.2) and is not judged here.
+
+  - id: "PoC-7.7.5"
+    framework: "Proof-of-Control, Working Draft v0.1.4 (ov-poc-standard 22c7b62), v0.1-C7.7.5"
+    pattern: deterministic
+    tagProvenance:
+      - pattern: deterministic
+        assigned: "2026-09-27"
+        rationale: >
+          Tagged at authoring (M8b): a repeated object key is found by a strict parser over the raw text, with no judgment in it.
+    intent: >
+      No record in the evidence stream contains a repeated object key at any
+      depth, read from the stream's raw text by a parser that refuses a
+      duplicate key rather than resolving it last-wins.
+    collectors:
+      - getEvidenceRecords
+    note: >
+      Requirement (quoted): "Verify that a parser rejects duplicate object keys rather than resolving them last-wins, so that one evidence artifact cannot mean different things to different readers." mlassure's own parser refuses duplicate keys, and it checked that the stream holds no record with one. It did not assess the deployment's parser: the standard's auditor test, submitting a token with a repeated key and confirming refusal, needs the deployment itself.
+
+  - id: "PoC-7.6.2"
+    framework: "Proof-of-Control, Working Draft v0.1.4 (ov-poc-standard 22c7b62), v0.1-C7.6.2"
+    pattern: deterministic
+    tagProvenance:
+      - pattern: deterministic
+        assigned: "2026-09-27"
+        rationale: >
+          Tagged at authoring (M8b): sequence continuity is arithmetic over step_index values in stream order.
+    intent: >
+      Within the stream, the records of each agent_id carry
+      poc_claims.step_index starting at 0 and rising by exactly 1 in stream
+      order, so a missing record shows as a gap and a repeated or descending
+      index shows as a break.
+    collectors:
+      - getEvidenceRecords
+    note: >
+      Requirement (quoted): "Verify that evidence records carry per-source monotonic sequence numbers (or equivalent chaining), so a verifier can detect a missing record from the sequence gap alone." mlassure treats agent_id as the source and the stream as given as the sampled window. It did not assess whether the stream is the deployment's complete output: a record removed after the last one of a sequence leaves no gap. It did not replay chain_head, the equivalent chaining the requirement also allows, and it did not assess continuity across separately delivered streams.
+
+  - id: "PoC-7.3.2"
+    framework: "Proof-of-Control, Working Draft v0.1.4 (ov-poc-standard 22c7b62), v0.1-C7.3.2"
+    pattern: attestation
+    tagProvenance:
+      - pattern: attestation
+        assigned: "2026-09-27"
+        rationale: >
+          Tagged at authoring (M8b): who can use the signing keys is a fact about key-management configuration and access control, which no field of an evidence record shows.
+    intent: >
+      The keys that sign the evidence records are held by the generating
+      mechanism and cannot be used by operator or agent identities. No field of
+      an evidence record carries this property; it is a fact about the
+      deployment's key custody, so conformance needs a named person's
+      attestation.
+    collectors: []
+    note: >
+      Requirement (quoted): "Verify that evidence records are signed by keys held by the generating mechanism (gateway, enclave, or logging service) that operator and agent identities cannot access, per the key-custody configuration." mlassure assessed none of it: it verifies no signatures in this control set and cannot see key custody from the stream. The standard's auditor evidence is the key-custody ACLs and a confirmation that operator accounts hold no signing capability for evidence keys.
+
+  - id: "PoC-10.2"
+    framework: "Proof-of-Control, Working Draft v0.1.4 (ov-poc-standard 22c7b62), v0.1-C10.2.1 and v0.1-C10.2.2"
+    pattern: synthesis
+    tagProvenance:
+      - pattern: synthesis
+        assigned: "2026-09-27"
+        rationale: >
+          Tagged at authoring (M8b): matching disclosed assumptions against a claim register and the mechanisms the records show combines two sources and reads prose, which is judgment, not a lookup.
+    intent: >
+      The trust-assumption disclosure lists, for every claim in its claim
+      register, each residual trust assumption with the assumption's subject
+      (named vendor, hardware element, mathematical assumption, or ceremony),
+      matched one-to-one against the mechanisms the register names; every
+      disclosed assumption is tagged with one category from the draft set
+      Hardware, Mathematical, Ceremony, Vendor, Implementation, Distributed; and
+      the mechanisms the evidence records themselves show (the signature
+      algorithm in poc_claims.alg, the digest algorithms in the digest tags, and
+      the attestation platform in submods.attestation.platform) each appear in
+      the disclosure.
+    collectors:
+      - getTrustAssumptionDisclosure
+      - getEvidenceRecords
+    note: >
+      Requirements (quoted): 10.2.1 "Verify that the disclosure lists, per claim, each residual trust assumption with the assumption's subject (named vendor, hardware element, mathematical assumption, or ceremony) — matched one-to-one against the mechanisms in the claim register." 10.2.2 "Verify that each disclosed assumption is tagged with one of the defined categories (draft set: Hardware, Mathematical, Ceremony, Vendor, Implementation, Distributed), so disclosures are machine-comparable across implementations." This verdict is an LLM judgment over the disclosure and the stream, not a code check. mlassure did not assess whether the claim register is complete for the deployment, whether any disclosed assumption holds, or conformance to a standardized disclosure format, which the standard itself leaves open (WG-INPUT NEEDED, Appendix D issue 7).

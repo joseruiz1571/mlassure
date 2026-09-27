@@ -306,3 +306,45 @@ describe("control loader — tagProvenance (M3f)", () => {
     }
   });
 });
+
+describe("control loader — family and note (M8b)", () => {
+  const set = (head: string, note: string) => `
+version: "0.0.1-test"
+${head}
+controls:
+  - id: "TEST-1"
+    framework: "test"
+    pattern: synthesis
+    intent: "test control"
+    collectors: []
+${note}
+`;
+
+  it("a control set without family loads without one (every pre-M8b file)", async () => {
+    const s = await loadYaml(set("", ""));
+    expect(Object.hasOwn(s, "family")).toBe(false);
+    expect((await loadControlSet("fixtures/controls/nist-subset.yaml")).family).toBeUndefined();
+  });
+
+  it("family is kept when a non-empty string, rejected otherwise", async () => {
+    expect((await loadYaml(set(`family: "poc-evidence"`, ""))).family).toBe("poc-evidence");
+    await expect(loadYaml(set(`family: 3`, ""))).rejects.toThrow(`"family" must be a non-empty string`);
+    await expect(loadYaml(set(`family: ""`, ""))).rejects.toThrow(`"family" must be a non-empty string`);
+  });
+
+  it("a folded note loads trimmed; interior line breaks and non-strings are rejected", async () => {
+    const folded = await loadYaml(set("", `    note: >\n      one line\n      folded\n`));
+    expect(folded.controls[0]!.note).toBe("one line folded");
+    await expect(loadYaml(set("", `    note: |\n      two\n      lines\n`))).rejects.toThrow("interior line breaks");
+    await expect(loadYaml(set("", `    note: 42\n`))).rejects.toThrow(`"note" must be a non-empty string`);
+  });
+
+  it("the PoC fixture names its family and carries a note on every control", async () => {
+    const poc = await loadControlSet("fixtures/controls/poc-c7-subset.yaml");
+    expect(poc.family).toBe("poc-evidence");
+    expect(poc.controls.map((c) => c.id)).toEqual([
+      "PoC-7.7.1", "PoC-7.7.3", "PoC-7.7.5", "PoC-7.6.2", "PoC-7.3.2", "PoC-10.2",
+    ]);
+    for (const c of poc.controls) expect(c.note).toBeTruthy();
+  });
+});
