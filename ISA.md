@@ -1,11 +1,11 @@
 ---
 task: mlassure 1.0 course — M8 target generalization (generic EvidenceProvider) + Proof-of-Control control family
 slug: mlassure-1-0-course
-phase: climbing
-progress: 61/62
+phase: complete
+progress: 62/62
 mode: algorithm
 started: 2026-09-25T07:30:00Z
-updated: 2026-09-27T22:00:00Z
+updated: 2026-09-28T05:40:00Z
 project: mlassure
 principal_stated_goal: "pick up mlassure, chart a course forward to 1.0 within the context of my other relevant work, im going to bed, don't stop to ask for permissions, push ahead as much as possible, leave me a list of blockers i need to help with, you have 4 hours to reflect, pick and direction, polan out the work, and move forward, the linux foundaiton ltds proof of control work and repository is really relevant here"
 principal_stated_goal_source: prompt
@@ -1311,7 +1311,7 @@ Read for this design: `schema/poc-evidence.schema.json`, `schema/README.md`, `ch
 - [x] ISC-M8b-22: `rawText` is what is stored, BOM included. Falsifier: bytes EF BB BF 7B 7D. — evidence: `poc-evidence.test.ts` "a UTF-8 byte-order mark stays in rawText…"
 - [x] ISC-M8b-23: the fixture matrix test enumerates streams from disk in both directions. Falsifier: a stream with no expectation fails the test. — evidence: `poc-evidence.test.ts` "the matrix and the streams on disk name the same set, in both directions"
 - [x] ISC-M8b-24: every `notAssessed` is still true after the fixes above, changed only by minimal factual additions, each listed before and after for the owner. Falsifier: Read against the code. — evidence: `git diff 8fab278..6ef1218 -- fixtures/controls/poc-c7-subset.yaml`: one sentence added to 7.7.1, one clause replaced in 7.7.3, nothing else. Left for the owner: the 7.7.3 intent still describes the narrower pre-fix scope, which is true but understates the check
-- [ ] ISC-M8b-25: the red team of `poc-c7-subset.yaml` (four lenses on the OpenAI flagship model, at the owner's request) is delivered to him as one ranked document with a steelman and the strongest counter-argument, outside the repo. Falsifier: Read.
+- [x] ISC-M8b-25: the red team of `poc-c7-subset.yaml` (four lenses on the OpenAI flagship model, at the owner's request) is delivered to him as one ranked document with a steelman and the strongest counter-argument, outside the repo. Falsifier: Read. — evidence: document written outside the repo with steelman, counter-argument, 40+ findings tagged by source, two independent rewrites side by side, and eleven decisions; raw model outputs saved beside it. Served model unconfirmed from metadata on every pass
 
 ## Decisions (M8b, 2026-09-27)
 
@@ -1323,6 +1323,9 @@ Read for this design: `schema/poc-evidence.schema.json`, `schema/README.md`, `ch
 - 2026-09-27 (dependencies): `ajv` moved from dev to runtime dependencies; format assertion is off, as in the standard's reference validator. `resolveJsonModule` is on so the schema ships inside the build.
 - 2026-09-27 (cross-vendor audit, Forge, read-only — 2 MAJOR / 5 MINOR / 2 NIT; verdict "concerns, fix first"): the audit helper could not run (it looks for the ISA in the assistant's work folder, and this ISA lives in the repo; the bundle would also have exceeded its size cap), so the auditor ran five scoped passes on the OpenAI model by hand and tagged each finding by who found it. Findings tagged as the auditor's own are in-family and are weighed as such. Both majors were confirmed by the main loop reading the code before any fix was briefed. Adopted as claims ISC-M8b-16 to -24: digest coverage and its overclaiming rationale (MAJOR), number written form lost in the strict parser (MAJOR), wording keyed on the control set only, descriptor path containment, blank lines as records, vacuous 7.7.3 pass, stale-prone matrix test, BOM stripped from `rawText`, rounded step numbers. Rebutted: the help-text change breaks byte-identity of `--help`; it was the owner's explicit call ("assess a target makes sense") and the M8 anti-claim is about assessment output. Deferred to the owner: the PoC-7.6.2 start-at-0 rule fails a rotated log window, which the intent states and is a wording and design question for his evaluation; `endpointName` as the shared key for the PoC issuer (already in fog). Deferred as a separate task, outside this PR: the bundle verifier discards every `report.json` parse failure except a duplicate key, so an unparseable report with recomputed hashes skips the metadata-binding check silently. That is pre-existing, lives in `bundle.ts`, and changing it changes verifier semantics the SPEC describes.
 - 2026-09-27 (1.0 anti-claim 1 read precisely): the audit noted README and CHANGELOG state a Tier 2 placement. That is the intended self-assessment from M7. The anti-claim forbids claiming Proof-of-Control or Tier 3, and using the name as a badge; it does not forbid stating Tier 2.
+- 2026-09-28 (red team, first dispatch ran in-family by my error): the brief to the four red-team reviewers said "no network calls", which blocked the call to the OpenAI model the owner had asked for. All four did the analysis themselves and said so. Corrected and re-run on the OpenAI model. Both sets are kept and every finding is tagged by source. Two of the four reviewers finished their model passes and went idle without relaying; their outputs were read from disk. Learned: a constraint in a brief is checked against the task it would forbid before it is sent.
+- 2026-09-28 (findings left to the owner): ids, the status word, report rendering of intent and version, the PoC-7.6.2 start-at-0 rule, splitting PoC-10.2, and the PoC-7.3.2 intent are wording and design decisions the owner asked to evaluate himself. None was changed.
+- 2026-09-28 (merged): the owner merged PR #4 himself on 2026-09-28T00:54Z at head 2e45415, which carries every audit fix; merge commit ef82edc, CI green on `main`. The red-team document reached him after the merge, so its wording and design decisions apply to `main` as follow-up changes, not as a gate on PR #4. The pre-existing faults found along the way are tracked separately (unparseable report.json in the verifier; a satisfied judgment with nothing cited).
 
 ## Not yet verified (M8b)
 
