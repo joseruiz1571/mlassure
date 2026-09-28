@@ -2,10 +2,10 @@
 task: mlassure 1.0 course — M8c red-team follow-ups: cited verdicts, scope in the report, sequence windows
 slug: mlassure-1-0-course
 phase: complete
-progress: 74/74
+progress: 75/75
 mode: algorithm
 started: 2026-09-25T07:30:00Z
-updated: 2026-09-28T06:10:00Z
+updated: 2026-09-28T06:30:00Z
 project: mlassure
 principal_stated_goal: "pick up mlassure, chart a course forward to 1.0 within the context of my other relevant work, im going to bed, don't stop to ask for permissions, push ahead as much as possible, leave me a list of blockers i need to help with, you have 4 hours to reflect, pick and direction, polan out the work, and move forward, the linux foundaiton ltds proof of control work and repository is really relevant here"
 principal_stated_goal_source: prompt
@@ -1373,12 +1373,14 @@ Read for this design: `schema/poc-evidence.schema.json`, `schema/README.md`, `ch
 - [x] ISC-M8c-10: the PoC-7.6.2 `intent` and `notAssessed` are true of the new rule, changed by the minimum needed, and the change is listed before and after for the owner. `notAssessed` says records before the first one leave no gap. Falsifier: Read against the code. — evidence: `git diff main -- fixtures/controls/poc-c7-subset.yaml`: PoC-7.6.2 intent and notAssessed only, two edits
 - [x] ISC-M8c-11: full suite green, typecheck clean; every pre-existing assertion that had to change is listed with its reason. Falsifier: `bun test`, `bun run typecheck`, `git diff` over pre-existing test files. — evidence: `bun test` 380 pass / 3 skip / 0 fail, 383 tests, 21 files; `tsc --noEmit` clean. Pre-existing assertions changed: one in agent-loop.test.ts (its scripted model now collects and cites; the test is about loop exit, which still holds) and one in citation-guard.test.ts (empty citations now pass only for a non-conformance status)
 - [x] ISC-M8c-12: branch pushed, PR open against `main`, CI green on the PR's head commit. Falsifier: `gh pr checks` with the head SHA compared. — evidence: PR #7; CI run 36384638969 on head c77f0b9: 379 pass, 4 skip, 0 fail
+- [x] ISC-M8c-13: the OSCAL result carries the family's evidence-scope sentence, appended to its `description` and as `remarks`, so a consumer that reads only the OSCAL file sees the report-wide limit; a SageMaker result has no `remarks` key and its `description` is unchanged. Falsifier: assertions on both; the NIST schema test over a PoC run. — evidence: `poc-outputs.test.ts` "ISC-M8c-13…" and the extended nist-subset absence test; `oscal-ar.schema.test.ts` 7 pass; SageMaker narrative and OSCAL identical to pre-M8 `main` after normalisation
 
 ## Decisions (M8c, 2026-09-28)
 
 - 2026-09-28 (`partially-satisfied` included): the owner approved refusing `satisfied` with nothing cited. `partially-satisfied` has the same hole and was included; flagged to him as a choice he can narrow.
 - 2026-09-28 (no second look elected, logged per the visibility floor): this change touches the agent loop and the citation guard on a public repo. No independent review was run. Reasons: the diff is small, every claim was re-probed end to end by the main loop with its own scripts, two independent reviews ran on the adjacent code within the last day, and the change lands as a PR for the owner, unmerged.
 - 2026-09-28 (delegate): built by the same execution-leg delegate as M8b, from the ISA claims plus a brief. The terminal summary moved into `src/cli/summary.ts` so it could be tested without an API key; `finalizeJudgment` is exported for its test.
+- 2026-09-28 (gap in my own claims): ISC-M8c-5 to -7 put the evidence scope in the narrative and the terminal summary and left it out of the OSCAL file, which is the surface the red team worried about most. The build delegate reported the omission; the owner approved closing it. Added as ISC-M8c-13.
 
 ## Not yet verified (M8c)
 

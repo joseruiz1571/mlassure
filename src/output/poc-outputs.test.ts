@@ -207,6 +207,16 @@ describe("M8c: a Proof-of-Control report carries its own scope", () => {
     // Schema validity of this document is asserted in oscal-ar.schema.test.ts (ISC-M8b-12), which renders the same run.
   });
 
+  it("ISC-M8c-13: the OSCAL result carries the evidence scope in its description and remarks", async () => {
+    const { report, controlSet } = await runPocFixture();
+    const result = toOscalAssessmentResults(report, controlSet)["assessment-results"].results[0]!;
+    expect(report.evidenceScope).toBe(SCOPE);
+    expect(result.remarks).toBe(SCOPE);
+    expect(result.description.endsWith(SCOPE)).toBe(true);
+    expect(result.description.split(SCOPE)).toHaveLength(2);
+    // Schema validity with these fields present is asserted in oscal-ar.schema.test.ts, which renders the same run.
+  });
+
   it("a nist-subset run carries neither framework nor evidenceScope, and its findings no not-assessed remark", async () => {
     const controlSet = await loadControlSet("fixtures/controls/nist-subset.yaml");
     const provider = awsSageMakerProvider(new FixtureProvider("fixtures/targets/model-clean.json"));
@@ -221,6 +231,11 @@ describe("M8c: a Proof-of-Control report carries its own scope", () => {
     const narrative = toNarrativeMarkdown(report, controlSet);
     expect(narrative).not.toContain("**Checked:**");
     expect(narrative).not.toContain("Evidence scope");
+    const sageMakerResult = toOscalAssessmentResults(report, controlSet)["assessment-results"].results[0]!;
+    expect(Object.hasOwn(sageMakerResult, "remarks")).toBe(false);
+    expect(sageMakerResult.description).toBe(
+      "Agentic control assessment of fraud-detection-v2 (fraud-detection-endpoint) against control set " + controlSet.version + "."
+    );
     const remarks = (toOscalAssessmentResults(report, controlSet)["assessment-results"].results[0]!.findings ?? []).map((f) => f.remarks ?? "");
     for (const r of remarks) expect(r).not.toContain("Not assessed");
   });

@@ -102,6 +102,7 @@ export type OscalResult = {
   "reviewed-controls": OscalReviewedControls;
   observations?: OscalObservation[];
   findings?: OscalFinding[];
+  remarks?: string;
 };
 
 export type OscalAssessmentResults = {

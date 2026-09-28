@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added — M8c
 
 - A Proof-of-Control report carries its own scope. The family supplies an evidence-scope sentence (`FamilyWording.evidenceScope`), carried as `evidenceScope` on the report and printed once in the narrative and in the terminal summary. Each result carries its `framework` string, and the narrative prints the checked property and the framework under each verdict, before the not-assessed line. Both appear only when the report's family is set and is not `aws-sagemaker`, so SageMaker output keeps its exact shape.
-- OSCAL findings whose control has `notAssessed` carry `remarks`: "Satisfied for the evidence assessed only. Not assessed: …" on a satisfied finding, and the not-assessed text after the existing verdict remark otherwise.
+- OSCAL findings whose control has `notAssessed` carry `remarks`: "Satisfied for the evidence assessed only. Not assessed: …" on a satisfied finding, and the not-assessed text after the existing verdict remark otherwise. The OSCAL result itself carries the evidence-scope sentence, appended to its `description` and as `remarks`, so a consumer that reads only the OSCAL file sees it.
 - Fixture streams `step-window.jsonl` (steps 5, 6, 7) and `step-window-gap.jsonl` (5, 7).
 - The terminal summary is rendered by `src/cli/summary.ts` (`terminalReportLines`), unchanged for a report without `evidenceScope`.
 

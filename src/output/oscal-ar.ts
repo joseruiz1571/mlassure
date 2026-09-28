@@ -214,6 +214,10 @@ export function toOscalAssessmentResults(
   }
 
   const controlSetLabel = controlSet?.version ?? report.controlSetVersion;
+  // The report-wide evidence scope (M8c) goes where a consumer that reads only
+  // this file will see it: in the result's description, which every renderer
+  // shows, and again as remarks. Absent for a SageMaker report.
+  const scope = report.evidenceScope;
   const nowIso = new Date().toISOString();
 
   return {
@@ -239,8 +243,10 @@ export function toOscalAssessmentResults(
           title: `mlassure run ${report.runAt}`,
           description:
             `Agentic control assessment of ${report.targetName} ` +
-            `(${report.endpointName}) against control set ${controlSetLabel}.`,
+            `(${report.endpointName}) against control set ${controlSetLabel}.` +
+            (scope !== undefined ? ` ${scope}` : ""),
           start: report.runAt,
+          ...(scope !== undefined ? { remarks: scope } : {}),
           "reviewed-controls": {
             "control-selections": [
               {
