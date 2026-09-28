@@ -38,6 +38,8 @@ Use the available evidence collector tools to gather relevant facts about this e
 
 Remember: only cite evidence IDs that appear in tool responses you receive during this session.`,
   attestationEvidence: "automated collection from an evidence stream",
+  evidenceScope:
+    "Evidence scope: the stream and disclosure were supplied by the operator. Signatures were not verified, and production origin, completeness and selection were not assessed. These verdicts describe the files assessed; none says the system that produced them conforms to Proof-of-Control.",
 };
 
 /** A number in a record, as written in the raw text, at its strict-parser path (`$.poc_claims.step_index`). */

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { validateCitations, CitationError } from "./citation-guard.js";
+import { validateCitations, CitationError, UncitedVerdictError } from "./citation-guard.js";
 import { EvidenceStore } from "../store/evidence-store.js";
 import type { Judgment } from "../types.js";
 
@@ -30,7 +30,34 @@ describe("validateCitations", () => {
 
   it("passes when evidenceCited is empty", () => {
     const store = makeStore("id-a");
-    expect(() => validateCitations(makeJudgment([]), store)).not.toThrow();
+    // M8c: empty citations pass only for a verdict that asserts no conformance.
+    expect(() => validateCitations({ ...makeJudgment([]), status: "insufficient-evidence" }, store)).not.toThrow();
+  });
+
+  it("M8c: satisfied or partially-satisfied with nothing cited is refused by name", () => {
+    const store = makeStore("id-a");
+    for (const status of ["satisfied", "partially-satisfied"] as const) {
+      let caught: unknown;
+      try {
+        validateCitations({ ...makeJudgment([]), status }, store);
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(UncitedVerdictError);
+      expect((caught as UncitedVerdictError).status).toBe(status);
+      expect((caught as UncitedVerdictError).message).toContain(`"${status}" but cites no evidence`);
+    }
+  });
+
+  it("M8c: not-satisfied, not-applicable and insufficient-evidence may cite nothing", () => {
+    const store = makeStore("id-a");
+    for (const status of ["not-satisfied", "not-applicable", "insufficient-evidence"] as const) {
+      expect(() => validateCitations({ ...makeJudgment([]), status }, store)).not.toThrow();
+    }
+  });
+
+  it("M8c: a phantom id is still a CitationError, checked before the uncited rule", () => {
+    expect(() => validateCitations(makeJudgment(["phantom"]), makeStore())).toThrow(CitationError);
   });
 
   it("throws CitationError when an ID is not in the store", () => {

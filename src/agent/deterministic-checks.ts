@@ -62,7 +62,7 @@ async function collectSingle(
  * current and future deterministic check gets it automatically, not by each
  * author remembering to call both by hand.
  */
-function finalizeJudgment(judgment: Judgment, store: EvidenceStore): Judgment {
+export function finalizeJudgment(judgment: Judgment, store: EvidenceStore): Judgment {
   const parsed = parseJudgment(judgment, judgment.controlId);
   validateCitations(parsed, store);
   return parsed;

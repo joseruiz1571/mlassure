@@ -8,7 +8,7 @@ import { runAssessment } from "../runner/assessment-runner.js";
 import { toOscalAssessmentResults } from "../output/oscal-ar.js";
 import { toNarrativeMarkdown } from "../output/narrative.js";
 import { writeEvidenceBundle, verifyEvidenceBundle } from "../output/bundle.js";
-import { isCodeDetermined } from "../types.js";
+import { terminalReportLines } from "./summary.js";
 
 const USAGE = `
 mlassure — agentic AI-control assurance
@@ -35,14 +35,6 @@ Options:
   --repeat <n>         Run the assessment N times (integer >= 1). Output paths get a -rNN suffix when N > 1
   --help, -h           Show this help text
 `.trim();
-
-const STATUS_ICON: Record<string, string> = {
-  satisfied: "✓",
-  "partially-satisfied": "~",
-  "not-satisfied": "✗",
-  "not-applicable": "-",
-  "insufficient-evidence": "?",
-};
 
 type ParsedArgs = { flags: Record<string, string>; positionals: string[] };
 
@@ -212,37 +204,7 @@ async function runLive(
     ? replicaPath(opts.reportPath, replica, repeats)
     : undefined;
 
-  console.log(`\n${"─".repeat(72)}`);
-  console.log(`  mlassure Assessment Report`);
-  console.log(`  Target: ${report.targetName} (${report.endpointName})`);
-  console.log(`  Run at: ${report.runAt}`);
-  console.log(`${"─".repeat(72)}\n`);
-
-  for (const r of report.results) {
-    const icon = STATUS_ICON[r.judgment.status] ?? "?";
-    // conf: is coverageConfidence (M2c, deterministic) — the now-authoritative value.
-    // The second label is pattern-aware (M3c): "self-reported" for every pattern
-    // except attestation, whose judgment is code-generated (agent.ts's LLM bypass,
-    // M3b) — calling that confidence value "self-reported" would be false, not
-    // just imprecise. Kept visible either way, never dropped.
-    // padEnd(7) never truncates, but is only safe from misalignment because both
-    // values are validated to the 3-value confidence union before reaching here:
-    // judgment.confidence via parseJudgment/JUDGMENT_CONFIDENCES, coverageConfidence
-    // by construction in deriveCoverageConfidence. Neither file re-checks the other's
-    // guarantee — if that union ever widens, this line degrades silently to cosmetic
-    // misalignment, not a crash.
-    const confidenceLabel = isCodeDetermined(r.pattern) ? "code-determined" : "self-reported";
-    console.log(
-      `  ${icon} ${r.judgment.controlId.padEnd(12)} ${r.judgment.status.padEnd(22)} conf:${r.coverageConfidence.padEnd(7)} ${confidenceLabel}:${r.judgment.confidence.padEnd(7)} evidence:${r.evidenceCount}`
-    );
-    if (r.judgment.gaps.length > 0) {
-      for (const gap of r.judgment.gaps) {
-        console.log(`      gap: ${gap}`);
-      }
-    }
-  }
-
-  console.log(`\n${"─".repeat(72)}\n`);
+  for (const line of terminalReportLines(report)) console.log(line);
 
   // Each write is wrapped individually so a failure on one names itself precisely
   // and reports the other artifact's state — an operator must never have to infer

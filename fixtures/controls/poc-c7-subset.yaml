@@ -74,13 +74,13 @@ controls:
           Tagged at authoring (M8b): sequence continuity is arithmetic over step_index values in stream order.
     intent: >
       Within the stream, the records of each agent_id carry
-      poc_claims.step_index starting at 0 and rising by exactly 1 in stream
-      order, so a missing record shows as a gap and a repeated or descending
-      index shows as a break.
+      poc_claims.step_index rising by exactly 1 in stream order, measured from
+      the first index the stream shows for that agent, so a missing record
+      shows as a gap and a repeated or descending index shows as a break.
     collectors:
       - getEvidenceRecords
     notAssessed: >
-      Requirement (quoted): "Verify that evidence records carry per-source monotonic sequence numbers (or equivalent chaining), so a verifier can detect a missing record from the sequence gap alone." mlassure treats agent_id as the source and the stream as given as the sampled window. It did not assess whether the stream is the deployment's complete output: a record removed after the last one of a sequence leaves no gap. It did not replay chain_head, the equivalent chaining the requirement also allows, and it did not assess continuity across separately delivered streams.
+      Requirement (quoted): "Verify that evidence records carry per-source monotonic sequence numbers (or equivalent chaining), so a verifier can detect a missing record from the sequence gap alone." mlassure treats agent_id as the source and the stream as given as the sampled window. It did not assess whether the stream is the deployment's complete output: a record removed before the first one or after the last one of a sequence leaves no gap. It did not replay chain_head, the equivalent chaining the requirement also allows, and it did not assess continuity across separately delivered streams.
 
   - id: "PoC-7.3.2"
     framework: "Proof-of-Control, Working Draft v0.1.4 (ov-poc-standard 22c7b62), v0.1-C7.3.2"

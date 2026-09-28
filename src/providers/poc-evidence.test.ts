@@ -294,6 +294,9 @@ const EXPECTED: Record<string, Record<string, Judgment["status"]>> = {
     "PoC-7.6.2": "satisfied",
   },
   "blank-lines": { "PoC-7.7.1": "satisfied", "PoC-7.7.3": "satisfied", "PoC-7.7.5": "satisfied", "PoC-7.6.2": "satisfied" },
+  // M8c: continuity is measured from the first index each agent shows.
+  "step-window": { "PoC-7.7.1": "satisfied", "PoC-7.7.3": "satisfied", "PoC-7.7.5": "satisfied", "PoC-7.6.2": "satisfied" },
+  "step-window-gap": { "PoC-7.7.1": "satisfied", "PoC-7.7.3": "satisfied", "PoC-7.7.5": "satisfied", "PoC-7.6.2": "not-satisfied" },
 };
 
 const STREAMS_DIR = "fixtures/targets/poc-evidence/streams";
@@ -444,6 +447,29 @@ describe("deterministic Proof-of-Control controls (ISC-M8b-4 to -7)", () => {
     for (const w of ["1e-324", "1e400", "9007199254740993", "0.1", "1754400000.0000000001"]) {
       expect([w, convertsExactly(w)]).toEqual([w, false]);
     }
+  });
+
+  it("M8c: 7.6.2 measures a window from the first index shown and names the range seen", async () => {
+    const window = await judge("PoC-7.6.2", "step-window");
+    expect(window.judgment.rationale).toContain(
+      "ranges seen: did:web:example.org:agents:ref-1 5–7, did:web:example.org:agents:ref-2 0–0"
+    );
+    expect(window.judgment.rationale).toContain("Records before the first index or after the last one shown would leave no gap.");
+    const gap = await judge("PoC-7.6.2", "step-window-gap");
+    expect(gap.judgment.rationale).toContain(
+      "agent did:web:example.org:agents:ref-1: record 2 has step_index 7 where 6 was expected, so step 6 is missing"
+    );
+    expect(gap.judgment.rationale).toContain("ranges seen: did:web:example.org:agents:ref-1 5–7");
+  });
+
+  it("M8c: a repeat or a descent inside a window is still not-satisfied", async () => {
+    const lines = readFileSync(streamPath("step-window"), "utf-8").trimEnd().split("\n");
+    const repeat = await assessControl(control("PoC-7.6.2"), POC_TARGET, pocProvider(tempStream([...lines, lines[3]!])), NO_LLM);
+    expect(repeat.judgment.status).toBe("not-satisfied");
+    expect(repeat.judgment.rationale).toContain("record 4 repeats step_index 7");
+    const descent = await assessControl(control("PoC-7.6.2"), POC_TARGET, pocProvider(tempStream([...lines, lines[2]!])), NO_LLM);
+    expect(descent.judgment.status).toBe("not-satisfied");
+    expect(descent.judgment.rationale).toContain("record 4 has step_index 6 after step_index 7, so the sequence descends");
   });
 
   it("ISC-M8b-6: 7.7.5 names the key, its path and the record", async () => {

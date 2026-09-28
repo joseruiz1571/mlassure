@@ -162,3 +162,66 @@ describe("ISC-M8b-13: a bundle from a PoC run verifies, format still 1", () => {
     });
   }
 });
+
+const SCOPE =
+  "Evidence scope: the stream and disclosure were supplied by the operator. Signatures were not verified, and production origin, completeness and selection were not assessed. These verdicts describe the files assessed; none says the system that produced them conforms to Proof-of-Control.";
+
+describe("M8c: a Proof-of-Control report carries its own scope", () => {
+  it("the report carries the evidence-scope sentence and each result its framework string", async () => {
+    const { report, controlSet } = await runPocFixture();
+    expect(report.evidenceScope).toBe(SCOPE);
+    for (const c of controlSet.controls) {
+      expect(report.results.find((r) => r.controlId === c.id)!.framework).toBe(c.framework);
+    }
+  });
+
+  it("ISC-M8c-5: the narrative prints checked property and framework before the not-assessed line, and the scope once", async () => {
+    const { report, controlSet } = await runPocFixture();
+    const narrative = toNarrativeMarkdown(report, controlSet);
+    expect(narrative.split(SCOPE)).toHaveLength(2); // exactly once
+    expect(narrative.indexOf(SCOPE)).toBeLessThan(narrative.indexOf("## Summary"));
+    for (const c of controlSet.controls) {
+      const section = narrative.slice(narrative.indexOf(`## ${c.id}:`));
+      const checked = section.indexOf(`**Checked:** ${c.intent.trim().replace(/\s+/g, " ")}`);
+      const judged = section.indexOf(`**Judged against:** ${c.framework}`);
+      const notAssessed = section.indexOf("**Not assessed:**");
+      expect(checked).toBeGreaterThan(0);
+      expect(judged).toBeGreaterThan(checked);
+      expect(notAssessed).toBeGreaterThan(judged);
+    }
+  });
+
+  it("ISC-M8c-6: every finding with notAssessed carries remarks, a satisfied one included, and the AR validates", async () => {
+    const { report, controlSet } = await runPocFixture();
+    const findings = toOscalAssessmentResults(report, controlSet)["assessment-results"].results[0]!.findings ?? [];
+    for (const c of controlSet.controls) {
+      const finding = findings.find((f) => f.title.startsWith(`${c.id}:`))!;
+      expect(finding.remarks).toContain(`Not assessed: ${c.notAssessed!}`);
+    }
+    const satisfied = findings.find((f) => f.title === "PoC-7.7.5: satisfied")!;
+    expect(satisfied.remarks).toBe(`Satisfied for the evidence assessed only. Not assessed: ${controlSet.controls.find((c) => c.id === "PoC-7.7.5")!.notAssessed!}`);
+    const attestation = findings.find((f) => f.title.startsWith("PoC-7.3.2:"))!;
+    // An existing verdict remark is kept, the not-assessed text added after it.
+    expect(attestation.remarks).toStartWith("mlassure verdict: insufficient-evidence.");
+    expect(attestation.remarks).toContain("\n\nNot assessed: ");
+    // Schema validity of this document is asserted in oscal-ar.schema.test.ts (ISC-M8b-12), which renders the same run.
+  });
+
+  it("a nist-subset run carries neither framework nor evidenceScope, and its findings no not-assessed remark", async () => {
+    const controlSet = await loadControlSet("fixtures/controls/nist-subset.yaml");
+    const provider = awsSageMakerProvider(new FixtureProvider("fixtures/targets/model-clean.json"));
+    const report = await runAssessment(
+      controlSet,
+      { modelName: "fraud-detection-v2", endpointName: "fraud-detection-endpoint" },
+      provider,
+      INSTANT_LLM
+    );
+    expect(Object.hasOwn(report, "evidenceScope")).toBe(false);
+    for (const r of report.results) expect(Object.hasOwn(r, "framework")).toBe(false);
+    const narrative = toNarrativeMarkdown(report, controlSet);
+    expect(narrative).not.toContain("**Checked:**");
+    expect(narrative).not.toContain("Evidence scope");
+    const remarks = (toOscalAssessmentResults(report, controlSet)["assessment-results"].results[0]!.findings ?? []).map((f) => f.remarks ?? "");
+    for (const r of remarks) expect(r).not.toContain("Not assessed");
+  });
+});

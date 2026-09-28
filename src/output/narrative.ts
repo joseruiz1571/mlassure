@@ -154,6 +154,21 @@ function renderNotAssessed(result: ControlResult): string | null {
   return `**Not assessed:** ${result.notAssessed}`;
 }
 
+/**
+ * What was checked and which text of the standard it was judged against
+ * (M8c), directly under the verdict, so the verdict is never read without
+ * its scope. Only for a declared non-SageMaker family: the runner sets
+ * `framework` on those results only, and a SageMaker report renders as before.
+ */
+function renderScope(result: ControlResult, sageMakerWording: boolean): string | null {
+  if (sageMakerWording || result.framework === undefined) return null;
+  const lines = [`**Judged against:** ${result.framework}`];
+  if (result.controlIntent !== undefined) {
+    lines.unshift(`**Checked:** ${result.controlIntent.trim().replace(/\s+/g, " ")}`);
+  }
+  return lines.join("  \n");
+}
+
 /** Heading format `## <controlId>: <icon> <label>` is deliberate: the colon distinguishes a control heading from the `## Summary` heading for any consumer counting per-control sections. */
 function renderControlSection(result: ControlResult, sageMakerWording: boolean): string {
   const j = result.judgment;
@@ -163,6 +178,7 @@ function renderControlSection(result: ControlResult, sageMakerWording: boolean):
       : "**[MISSING: agent did not provide a rationale for this judgment — do not treat this control as assessed without investigating.]**";
   const blocks = [
     `## ${result.controlId}: ${statusIcon(j.status, result.controlId)} ${statusLabel(j.status, result.controlId)}`,
+    renderScope(result, sageMakerWording),
     // Two lines, always both — confidence-as-coverage (M2c) is now the deterministic,
     // authoritative value, but the model's self-report is never silently dropped:
     // it's the signal a future essay can use to measure self-report/coverage divergence.
@@ -216,5 +232,10 @@ export function toNarrativeMarkdown(
     .map((r) => renderControlSection(r, sageMakerWording))
     .join("\n\n---\n\n");
 
-  return [header, renderSummary(report), sections].join("\n\n");
+  // M8c: the family's evidence-scope sentence, once, before any verdict.
+  const scope = !sageMakerWording && report.evidenceScope !== undefined ? `> ${report.evidenceScope}` : null;
+
+  return [header, scope, renderSummary(report), sections]
+    .filter((block): block is string => block !== null)
+    .join("\n\n");
 }
