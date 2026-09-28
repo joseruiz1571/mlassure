@@ -1,15 +1,13 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { loadControlSet } from "../loaders/control-loader.js";
-import { FixtureProvider } from "../providers/fixture-provider.js";
-import { awsSageMakerProvider } from "../providers/aws-sagemaker.js";
+import { loadTarget } from "../providers/target-loader.js";
 import { EvidenceStore } from "../store/evidence-store.js";
 import { AnthropicProvider } from "../llm/anthropic-provider.js";
 import { runAssessment } from "../runner/assessment-runner.js";
 import { toOscalAssessmentResults } from "../output/oscal-ar.js";
 import { toNarrativeMarkdown } from "../output/narrative.js";
 import { writeEvidenceBundle, verifyEvidenceBundle } from "../output/bundle.js";
-import type { AssessmentTarget } from "../types.js";
 import { isCodeDetermined } from "../types.js";
 
 const USAGE = `
@@ -21,7 +19,7 @@ Usage:
   mlassure --help
 
 Commands:
-  assess           Assess a target model against a control set
+  assess           Assess a target against a control set
   verify-bundle    Verify a custody bundle (integrity + completeness; signature checked separately via cosign)
 
 Options:
@@ -148,8 +146,9 @@ async function runScaffoldOnly(
   targetPath: string
 ): Promise<void> {
   const controlSet = await loadControlSet(controlsPath);
-  const targetJson = JSON.parse(readFileSync(targetPath, "utf-8")) as AssessmentTarget;
-  const _provider = awsSageMakerProvider(new FixtureProvider(targetPath));
+  // Built only to fail fast on a bad target (unknown family, missing stream);
+  // scaffold mode collects nothing.
+  const { target: targetJson } = loadTarget(targetPath);
   const store = new EvidenceStore();
 
   console.log("\nmlassure — scaffold mode (pass --live for agent assessment)\n");
@@ -182,8 +181,7 @@ async function runLive(
   opts: LiveOptions = {}
 ): Promise<void> {
   const controlSet = await loadControlSet(controlsPath);
-  const targetJson = JSON.parse(readFileSync(targetPath, "utf-8")) as AssessmentTarget;
-  const provider = awsSageMakerProvider(new FixtureProvider(targetPath));
+  const { target: targetJson, provider } = loadTarget(targetPath);
   const llm = new AnthropicProvider({
     ...(opts.model !== undefined ? { model: opts.model } : {}),
     ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),

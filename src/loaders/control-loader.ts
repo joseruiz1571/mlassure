@@ -192,6 +192,23 @@ function validateControl(raw: unknown, index: number): ControlItem {
     ? (c["collectors"] as string[])
     : [];
 
+  // notAssessed (M8b) is rendered as one narrative line and one OSCAL prop,
+  // and an OSCAL prop value cannot hold a line break. Same rule as provenance
+  // rationales: a folded single-line scalar (>) is the authoring style.
+  const notAssessed = c["notAssessed"];
+  if (notAssessed !== undefined) {
+    if (typeof notAssessed !== "string" || notAssessed.trim() === "") {
+      throw new Error(
+        `Control "${c["id"]}": "notAssessed" must be a non-empty string when present (got ${JSON.stringify(notAssessed)})`
+      );
+    }
+    if (/[\r\n]/.test(notAssessed.trim())) {
+      throw new Error(
+        `Control "${c["id"]}": "notAssessed" contains interior line breaks — use a single-line folded scalar (>)`
+      );
+    }
+  }
+
   return {
     id: c["id"],
     framework: c["framework"],
@@ -199,6 +216,8 @@ function validateControl(raw: unknown, index: number): ControlItem {
     intent: c["intent"],
     collectors,
     ...(typeof c["note"] === "string" ? { note: c["note"] } : {}),
+    // trim(): a folded scalar's trailing newline is serialization, not content.
+    ...(typeof notAssessed === "string" ? { notAssessed: notAssessed.trim() } : {}),
     ...(c["tagProvenance"] !== undefined
       ? {
           tagProvenance: validateTagProvenance(
@@ -238,6 +257,15 @@ export async function loadControlSet(filePath: string): Promise<ControlSet> {
     );
   }
 
+  if (
+    doc["family"] !== undefined &&
+    (typeof doc["family"] !== "string" || doc["family"].trim() === "")
+  ) {
+    throw new Error(
+      `Control file "${filePath}": "family" must be a non-empty string when present (got ${JSON.stringify(doc["family"])})`
+    );
+  }
+
   const controls = (doc["controls"] as unknown[]).map((c, i) =>
     validateControl(c, i)
   );
@@ -247,6 +275,7 @@ export async function loadControlSet(filePath: string): Promise<ControlSet> {
     ...(typeof doc["description"] === "string"
       ? { description: doc["description"] }
       : {}),
+    ...(typeof doc["family"] === "string" ? { family: doc["family"] } : {}),
     controls,
   };
 }

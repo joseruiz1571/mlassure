@@ -6,11 +6,11 @@
       "name": "mlassure",
       "dependencies": {
         "@anthropic-ai/sdk": "^0.104.1",
+        "ajv": "^8.20.0",
         "yaml": "^2.6.1",
       },
       "devDependencies": {
         "@types/bun": "latest",
-        "ajv": "^8.20.0",
         "ajv-formats": "^3.0.1",
         "typescript": "^5.7.3",
       },
