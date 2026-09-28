@@ -2,7 +2,9 @@
 
 [![ci](https://github.com/joseruiz1571/mlassure/actions/workflows/ci.yml/badge.svg)](https://github.com/joseruiz1571/mlassure/actions/workflows/ci.yml) [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
-Agentic AI-control assurance. Point it at an ML model and a control set; it collects evidence from AWS, runs an LLM judgment loop only where judgment is actually required, and emits verdicts where every claimed evidence ID traces back to something actually retrieved this run.
+Agentic AI-control assurance. mlassure assesses AI systems against NIST SP 800-53 with a citation invariant, so a verdict that cites evidence the run never retrieved fails the run.
+
+Point it at an ML model and a control set; it collects evidence from AWS, runs an LLM judgment loop only where judgment is actually required, and emits verdicts where every claimed evidence ID traces back to something actually retrieved this run.
 
 **The citation invariant:** if a judgment cites evidence ID `X`, then `X` must exist in the evidence store for that run. The guard is fail-closed — a hallucinated ID throws `CitationError` before anything is returned.
 
@@ -66,7 +68,7 @@ Every report now records what produced it: the model alias requested, the dated 
 
 ## Docker
 
-> **Status: build/run verified live (2026-07-23, Docker 29.6.2)** — `TODO-m3e-docker-build-verify` closed. The image builds clean, runs non-root (`uid=1000(bun)`), bakes in no key material (history + env scans clean), forwards arguments correctly, and completed a full live agent-loop assessment in-container with outputs written host-owned through a volume mount. The container-produced OSCAL document validates against the official 1.1.2 schema. Verification transcript in `ISA.md` `## Verification`.
+> **Status: build/run verified live (2026-07-23, Docker 29.6.2).** The image runs non-root (`uid=1000(bun)`), bakes in no key material, and completed a full live agent-loop assessment in-container with outputs written host-owned through a volume mount. The container-produced OSCAL document validates against the official 1.1.2 schema. Verification transcript: [`ISA.md`](ISA.md) `## Verification`.
 
 ```bash
 docker build -t mlassure .
@@ -235,71 +237,6 @@ CLI (assess command)
 
 ---
 
-## Implementation ledger
-
-*Which mechanisms described in the [essay series](#) are implemented, which are partial, and which are still design. Updated at each milestone.*
-
-**Implemented**
-
-- **Citation guard** — fail-closed: every ID in `evidenceCited` must trace to evidence retrieved this run; a phantom ID throws `CitationError` before any result is returned (`src/guard/citation-guard.ts`)
-- **Evidence store** — SHA-256 content-addressed, one store per control per run, duplicate-rejected at ingest (`src/store/evidence-store.ts`)
-- **Agent pattern taxonomy** — five patterns (`synthesis`, `sufficiency`, `correlation`, `deterministic`, `attestation`) defined in types and carried in the control YAML; each control is tagged before assessment runs (`src/types.ts`, `fixtures/controls/nist-subset.yaml`)
-- **Attestation → insufficient-evidence** — attestation-tagged controls return `insufficient-evidence` with a gap description; the system knows what it cannot determine; enforced via system prompt and verified in integration tests
-- **Tool-use loop** — Anthropic tool-use protocol, `MAX_ITERATIONS=10`, deterministic tool dispatch, citation validation at `submit_judgment` exit (`src/agent/agent.ts`)
-- **Fixture provider** — two fixture models with opposing verdicts (clean vs. stale monitoring) implement the SageMaker family's typed collector surface (`src/providers/fixture-provider.ts`)
-- **Generic evidence provider** — the agent, runner and tools depend on one `EvidenceProvider` interface: a family name, a catalog of named collectors, and `collect(name, target)`. A target family is a catalog plus a control set; SageMaker is the first (`src/providers/aws-sagemaker.ts`). Because collector names are strings, the runner checks every control against the provider's catalog and aborts before any control is assessed if a name is unknown (`src/providers/evidence-provider.interface.ts`)
-
-- **OSCAL Assessment Results output** — fail-closed 5-value→binary projection (`satisfied` judgment only; all others map to `not-satisfied`); full 5-value precision preserved in `judgment-status` prop; loud remarks for `not-applicable` findings (`src/output/oscal-ar.ts`); CLI: `mlassure assess ... --oscal <path>`. **Official-schema conformance verified (2026-07-23):** every generated document validates against NIST's own OSCAL 1.1.2 assessment-results JSON schema (vendored at `fixtures/schemas/`, sha256-pinned in the test so the schema can't be quietly edited to pass) and independently parses through compliance-trestle 4.0.2's strict model. The external check found what 40+ self-authored tests never did: print-form control IDs (`SI-6(1)`) violate OSCAL's token datatype. **Breaking change for `target-id` consumers:** findings now carry the NIST catalog token form (`si-6.1`); the raw print-form id is preserved on every finding as a `source-control-id` prop. Known disclosed simplification: `target-id` carries control-level granularity, not true per-objective ids — a future catalog-join could refine that.
-- **Auditor narrative renderer** — Markdown prose from `AssessmentReport`; human-readable judgment summaries per control (`src/output/narrative.ts`)
-- **Confidence as evidence coverage** — derivation of confidence scores from actual retrieved evidence counts rather than model self-report (`src/runner/assessment-runner.ts`; M2c)
-
-**Partial**
-
-- **Pattern differentiation in loop mechanics** — `synthesis`, `sufficiency`, and `correlation` currently differ only in how the control is framed to the model (`PATTERN_DESCRIPTIONS` in `src/agent/prompts.ts`); they share the same loop. Whether the categories warrant separate mechanics — or whether sufficiency and correlation collapse into synthesis — is an M3 design question.
-- **Collection scope disclosure** — whether assessed outputs disclose the collectors' IAM scope and retrieval permissions is an M3 design decision.
-
-**Implemented (M3a, 2026-07-19)**
-
-- **Broader control coverage** — expanded from 5 to 8 controls (`SC-7`, `RA-3`, `CA-7` added), reusing existing collectors and patterns with zero code changes (`fixtures/controls/nist-subset.yaml`). `RA-3` demonstrates a second, structurally distinct insufficient-evidence mechanism: conditional on the target's actual evidence (model card present or absent), reached through LLM reasoning over a genuinely empty tool result, rather than SA-10's statically-empty `collectors: []`. Live end-to-end verification against both fixtures confirmed 2026-07-19 (see [Demo output](#demo-output) above, now showing all 8 controls) — `TODO-m3a-live-verify` closed.
-
-**Implemented (M3b, 2026-07-19)**
-
-- **LLM bypass for `attestation`** — `assessControl()` now checks `control.pattern === "attestation"` before any tool/LLM setup and returns a code-generated `insufficient-evidence` judgment directly (`src/agent/agent.ts`). Zero collector calls, zero LLM API calls, for every attestation-pattern control (SA-10 and any future ones) — the "attestation always means insufficient-evidence" guarantee is now a property of the code, not a prompt instruction the model could theoretically ignore. Proven with negative-assertion tests (mock LLM/provider throw if ever invoked), not just judgment-shape checks. `deterministic` bypass remains out of scope (see Partial, above).
-
-**Implemented (M3c, 2026-07-19)**
-
-- **Output-layer pattern/provenance awareness** — `ControlResult` (`src/runner/assessment-runner.ts`) now carries the control's `pattern`, threaded into all 3 output surfaces via two named predicates (`isCodeDetermined`, `usesAttestationCallout` — `src/types.ts`). `narrative.ts`'s confidence-line label reads "code-determined (\<pattern\> pattern)" instead of the previously-unconditional "model self-reported" for code-determined judgments; its attestation callout now fires only for true attestation-pattern controls, with a distinct, narrower callout for any other pattern reaching `insufficient-evidence` that does not overclaim what the code can't support. `oscal-ar.ts` gains an additive `pattern` prop so machine consumers can derive the same distinction. `cli/index.ts`'s label follows suit. Closes the exact gap M3a's and M3b's delegation reviews both independently found. Two rounds of delegation review on this fix itself caught and closed two further real issues before shipping: a stale "Gaps / Requires Human Attestation" heading that contradicted the new callout, and an overclaiming callout text narrowed to what the data actually supports — see `ISA.md` Decisions for the full trail.
-
-**Implemented (M3d, 2026-07-19)**
-
-- **LLM bypass for `deterministic`** — `assessControl()` now dispatches `pattern: deterministic` controls to a per-control-ID registry of real TypeScript check functions (`src/agent/deterministic-checks.ts`), not a rule DSL or eval'd expression — mirroring how collectors are already dispatched by name. `SC-28` (customer-managed KMS key check) and `SC-7` (network isolation + VPC + security group check) both ship real, live-verified implementations; both route through the same `EvidenceStore`/citation-guard discipline as the LLM path, so the citation invariant holds for code-determined judgments too. **Fail-loud by design, no silent fallback**: a `deterministic`-pattern control with no registered check aborts the entire run (`runAssessment()`'s preflight, listing every missing check at once) before any control — deterministic or not — is assessed, rather than silently falling back to the LLM and producing a report that misrepresents its own provenance. `isCodeDetermined` (`src/types.ts`) generalizes to cover both `attestation` and `deterministic` as a pure derived function over `pattern` — structurally incapable of diverging from what actually ran. Delegation review on this fix found and fixed 2 real gaps before shipping: deterministic-check judgments weren't running through the same `parseJudgment`/`validateCitations` guards the LLM path is forced through (now they do, via a shared `finalizeJudgment` helper), and unguarded type casts on evidence payloads could have silently turned a malformed/unexpected shape into a confidently-wrong `not-satisfied` verdict instead of an honest `insufficient-evidence` one (now type-guarded). Live-verified against both fixtures: identical verdicts to the prior LLM-driven run, now `code-determined` instead of `self-reported`, zero LLM calls.
-
-**Implemented (M3e, 2026-07-19) — design + static verification complete, build/run DEFERRED-VERIFY**
-
-- **Docker packaging** — multi-stage `Dockerfile` (`deps` → `runtime`, both pinned to the same `oven/bun:1.2-slim` tag), non-root (`bun` user, uid 1000, reused from the base image), `ANTHROPIC_API_KEY` injected only via `docker run -e` (never a build `ARG`, never baked in — confirmed via grep, and fixtures independently confirmed clean of any real key before being baked into the image). No Docker install existed on the machine that wrote this, so `docker build`/`docker run` are `[DEFERRED-VERIFY]` — see `ISA.md` `## Verification` for the exact command checklist (`TODO-m3e-docker-build-verify`). Several design claims WERE empirically confirmed without Docker, using the locally-installed Bun directly: `bun install --frozen-lockfile --production` correctly excludes dev dependencies (verified twice, independently), and the `ENTRYPOINT`/`CMD` argument-forwarding shape matches `docker run <image> assess ...`'s intended invocation. The base image's `bun` user/home assumptions were confirmed by reading `oven/bun`'s actual upstream Dockerfile source, not assumed. Delegation review found and fixed a real data-loss trap: `--oscal`/`--narrative` output paths passed without a matching `-v` volume mount write successfully inside the container, report success truthfully, then vanish silently when `--rm` destroys the container — now loudly documented in the Docker quick-start.
-
-**Implemented (M3f, 2026-07-22)**
-
-- **Tag provenance** — each control's pattern tag can now carry an authority record: an optional `tagProvenance` array of directional migration records (`pattern`, `assigned` date, required `rationale`, and `supersedes` naming the previous pattern). The loader validates seven invariants fail-loud — origin records carry no `supersedes`, every later record's `supersedes` must equal its predecessor's pattern (a deliberately redundant chain-integrity check), dates must be non-decreasing (same-day migrations are legal), and the history head must equal the control's live `pattern` field, so tag and history can never silently drift apart. Historical records are shape-checked only — a retired pattern name in an old record stays loadable forever; registry membership is enforced solely at the head. Both output surfaces disclose provenance additively: the narrative renders a per-control "Tag provenance" list (`tagged <pattern> (date)` for the origin, `<from> → <to> (date): rationale` for migrations) and OSCAL findings gain `pattern-assigned` and per-migration `pattern-migration` props — with zero new props when a control set records no provenance. **The fixture's provenance is real, and deliberately boring:** all 8 controls carry origin records only, with dates and SHAs reconstructed from this repo's actual git history (`9b00bbf` 2026-06-10, `cffefdc` 2026-07-19) — no tag in this repo has ever migrated, so no migration is recorded. A provenance feature that shipped with fabricated history would violate the same invariant the citation guard enforces for evidence; migration mechanics are pinned by synthetic-data tests instead (including the documented-legal `A → B → A` re-adoption chain).
-
-**Implemented (M3g, 2026-07-22)**
-
-- **Custody chain and evidence retention** — the [cgep-capstone](https://github.com/joseruiz1571/cgep-capstone) custody pattern integrated into mlassure's own shape (a local CLI, not a CI pipeline): `assess --bundle <dir>` emits a tamper-evident bundle (full retrieved evidence with payloads cited-or-not, the run's outputs, and a manifest with per-file sha256 + a canonical root hash over NFC-normalized sorted path/hash pairs, written manifest-last); `verify-bundle` re-verifies everything fail-loud — bit-flips, missing files, **extra** files, symlinks, and manifest/rootHash inconsistency all exit 1 naming the violation, with exactly the Cosign signature artifacts exempt from extra-file detection. Signing chain proven empirically with an ephemeral key (good sig verifies; tampered manifest and wrong-key verification both fail); keyless OIDC documented for future CI. See [Custody chain](#custody-chain) for the four properties, their mechanisms, and what the signature deliberately does NOT claim to prove.
-
-**Implemented (0.4.0, 2026-08-30)**
-
-- **Reproducibility and run metadata** — assessments now record their own provenance, motivated by the control-wording variance study (whose runs needed fair cross-run comparison). `AssessmentReport` gains `llmModel`, `llmTemperature`, and `replica`; each `ControlResult` carries `controlIntent`, the exact control wording the agent was given (`src/runner/assessment-runner.ts`). The provider captures what Anthropic actually served — dated snapshot ID and per-call token usage — rather than only what was requested (`src/llm/anthropic-provider.ts`). New CLI flags: `--report` (AssessmentReport JSON to a path), `--model`, `--temperature` (0 is valid, guarded against `??`/falsy swallowing), and `--repeat N` (replicas with `-rNN` output suffixes). `MLASSURE_MODEL`, documented in `.env.example` since M1 but previously unread, is now honored; `ANTHROPIC_WORKSPACE_ID` optionally sets the `anthropic-workspace-id` header for identity-linked keys. Provider config covered by new unit tests (`src/llm/anthropic-provider.test.ts`).
-
-**Implemented (M8b, 2026-09-27, unreleased)**
-
-- **Proof-of-Control control family** — a second provider family, `poc-evidence` (`src/providers/poc-evidence.ts`), chosen by the target file's `family`. Four deterministic checks (`src/providers/poc-evidence-rules.ts`, registered in `src/agent/deterministic-checks.ts`), one attestation control, one synthesis control over the disclosure. Prompt sentences that named SageMaker come from the provider now; the SageMaker text is unchanged and pinned by the parity test, and a second pinned capture proves no SageMaker vocabulary reaches a Proof-of-Control prompt. See [Assessing Proof-of-Control evidence](#assessing-proof-of-control-evidence).
-
-**Designed**
-
-- **Live AWS read-only provider** — M4
-
----
-
 ## Control set
 
 `fixtures/controls/nist-subset.yaml` maps eight NIST SP 800-53 Rev 5 controls to SageMaker evidence collectors:
@@ -320,6 +257,8 @@ M3a added SC-7, RA-3, and CA-7 by reusing existing collectors and patterns — z
 ---
 
 ## Status
+
+Shipped through 0.5.0: citation guard, evidence store, agent loop, OSCAL Assessment Results, auditor narrative, eight NIST SP 800-53 controls, attestation and deterministic bypasses, Docker, tag provenance, and the custody chain (standalone spec, conformance vectors, Proof-of-Control crosswalk). M8a (generic evidence provider) and M8b (Proof-of-Control family) are built and unreleased. M9 is planned. M4 (live AWS read-only provider) is post-1.0. Milestone write-up: [`IMPLEMENTATION.md`](IMPLEMENTATION.md).
 
 | Milestone | Status |
 |-----------|--------|
@@ -357,4 +296,13 @@ bun test src/agent/agent.test.ts   # integration (requires ANTHROPIC_API_KEY in 
 
 ---
 
-Part of a four-repo AI governance portfolio: [governance-card-stack](https://github.com/joseruiz1571/governance-card-stack) · [mltrack](https://github.com/joseruiz1571/mltrack) · [cgep-capstone](https://github.com/joseruiz1571/cgep-capstone)
+## Evidence and assurance stack
+
+- [Colophon](https://github.com/joseruiz1571/colophon) signs a session packet for AI agent tool use that a stranger can verify, with a control catalog whose every control names its falsifier.
+- **mlassure** (this repo) assesses AI systems against NIST SP 800-53 with a citation invariant, so a verdict that cites evidence the run never retrieved fails the run.
+- [mltrack](https://github.com/joseruiz1571/mltrack) keeps an AI model inventory mapped to NIST AI RMF, ISO 42001, and SR 11-7 behind a fail-closed CI gate.
+- [Governance Card Stack](https://github.com/joseruiz1571/governance-card-stack) puts Model, System, and Agent Cards on one OSCAL spine so posture is data a pipeline can gate on.
+
+[Controlled Vocabulary](https://controlledvocabulary.substack.com) is the Substack on AI governance through a library and information science lens.
+
+Related prior work: [cgep-capstone](https://github.com/joseruiz1571/cgep-capstone), compliance-as-code. The Cosign commands in [Custody chain](#custody-chain) follow that repo's signing pattern.
