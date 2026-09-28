@@ -1,11 +1,11 @@
 ---
-task: mlassure 1.0 course — M8 target generalization (generic EvidenceProvider) + Proof-of-Control control family
+task: mlassure 1.0 course — M8c red-team follow-ups: cited verdicts, scope in the report, sequence windows
 slug: mlassure-1-0-course
-phase: complete
-progress: 62/62
+phase: climbing
+progress: 73/74
 mode: algorithm
 started: 2026-09-25T07:30:00Z
-updated: 2026-09-28T05:40:00Z
+updated: 2026-09-28T06:00:00Z
 project: mlassure
 principal_stated_goal: "pick up mlassure, chart a course forward to 1.0 within the context of my other relevant work, im going to bed, don't stop to ask for permissions, push ahead as much as possible, leave me a list of blockers i need to help with, you have 4 hours to reflect, pick and direction, polan out the work, and move forward, the linux foundaiton ltds proof of control work and repository is really relevant here"
 principal_stated_goal_source: prompt
@@ -1339,3 +1339,48 @@ Read for this design: `schema/poc-evidence.schema.json`, `schema/README.md`, `ch
 - How a non-SageMaker target fills `AssessmentTarget.modelName` / `endpointName` and the report fields built from them, without changing bundle format 1.
 - Whether report and narrative labels ("Endpoint:") should become family-supplied, or a PoC target reuses `endpointName` for the issuer as M8b does.
 - The M3d cap ("two deterministic checks, no third without a fresh scoping pass") is lifted by M8b; the scoping pass is the M8 roadmap row plus the per-check claims.
+
+## M8c: red-team follow-ups (opened 2026-09-28)
+
+**Decision (owner, 2026-09-28, verbatim "proceed"):** build three of the red team's findings as one PR. He accepted the recommendation as stated: refuse a `satisfied` verdict that cites nothing; put the scope of a Proof-of-Control verdict into the report itself; let the sequence check accept any starting index. Local ids with a separate mapping field wait on his naming choice and are not in this milestone.
+
+## M8c Design
+
+- **A verdict that asserts conformance cites evidence.** `satisfied` and `partially-satisfied` with an empty `evidenceCited` are refused. `partially-satisfied` is included because it is the same hole: it asserts that part of the control holds. `not-satisfied`, `not-applicable` and `insufficient-evidence` may still cite nothing, since "nothing exists to retrieve" is a legitimate finding.
+- **On the model path the refusal goes back to the model.** It arrives as the tool result for `submit_judgment`, and the loop continues inside the existing iteration cap, so the model can collect and cite, or submit an honest `insufficient-evidence`. A run is not aborted for one slip. On the code path the same rule throws, because a code-run check that asserts conformance with no evidence is a defect.
+- **No prompt changes.** The system prompt already states the citation rule. Changing it would move what the SageMaker family sends to the model.
+- **Scope travels with the verdict, for a declared non-SageMaker family only.** The narrative prints what was checked and which text of the standard it was judged against, directly beside the verdict, and one report-level sentence says where the evidence came from. OSCAL findings carry remarks when the control has `notAssessed`, satisfied findings included. The scope sentence is supplied by the family, like the prompt wording.
+- **Sequence continuity is measured from the first index the stream shows.** The standard's auditor evidence is "compute sequence continuity over a sampled window". The check reports the range it saw per agent. The price is stated: records before the first one are as invisible as records after the last.
+
+## M8c Anti-claims
+
+- A SageMaker run's narrative, OSCAL and report.json gain no key, prop, line or remark, and what the family sends to the model is unchanged.
+- No verdict is ever rewritten by code. A refused judgment is returned to the model or raised as an error, never silently downgraded.
+- No control id changes, and no `intent` or `notAssessed` changes beyond what the new sequence rule makes necessary to stay true.
+- Bundle format stays "1"; `bundle.ts` and SPEC.md are untouched.
+
+## M8c Criteria
+
+- [x] ISC-M8c-1: a judgment of `satisfied` or `partially-satisfied` with empty `evidenceCited` is refused by the shared citation guard with a named error. Falsifier: unit tests for both statuses; the three other statuses with empty citations still pass the guard. — evidence: `citation-guard.test.ts` "satisfied or partially-satisfied with nothing cited is refused by name" and "…may cite nothing"
+- [x] ISC-M8c-2: on the model path the refusal is returned to the model as the `submit_judgment` tool result and the loop continues; a model that then cites retrieved evidence, or submits `insufficient-evidence`, completes normally. Falsifier: scripted-LLM test covering both recoveries, and one where the model never recovers and the run ends at the iteration cap with the existing error. — evidence: `uncited-verdict.test.ts`, four cases; main-loop probe through `runAssessment`: refusal text returned, model collected and cited, 3 LLM calls, run completed
+- [x] ISC-M8c-3: a code-run check that returns `satisfied` with nothing cited throws. Falsifier: unit test through `finalizeJudgment`'s path. — evidence: `uncited-verdict.test.ts` "throws through finalizeJudgment"
+- [x] ISC-M8c-4: what the SageMaker family sends to the model is unchanged. Falsifier: the parity test in `aws-sagemaker.test.ts` passes unmodified; snapshot sha256 `03e4bb61…` reproduces. — evidence: no diff against `main` in prompts.ts, registry.ts, aws-sagemaker.ts or the parity fixture; snapshot re-run hashes to 03e4bb61…
+- [x] ISC-M8c-5: for a report whose family is declared and is not `aws-sagemaker`, the narrative prints, per control, the checked property (the intent) and the framework string, placed before the not-assessed line, and prints the family's evidence-scope sentence once at report level. Falsifier: rendered PoC narrative contains each; grep. — evidence: `poc-outputs.test.ts` "ISC-M8c-5…"; main-loop render shows scope, Checked, Judged against, then Not assessed, with no AWS, SageMaker or Endpoint wording
+- [x] ISC-M8c-6: for the same reports, every OSCAL finding whose control has `notAssessed` carries `remarks`, satisfied findings included, and the document still validates against NIST's 1.1.2 schema. Falsifier: the schema test over a PoC run; an assertion on a satisfied finding's remarks. — evidence: `poc-outputs.test.ts` "ISC-M8c-6…"; `oscal-ar.schema.test.ts` PoC run validates; main-loop render shows the satisfied remarks
+- [x] ISC-M8c-7: the terminal summary of a PoC run prints the evidence-scope sentence. Falsifier: captured CLI output of a scripted run, or the rendering function's unit test if the CLI path needs a key. — evidence: `summary.test.ts` "ISC-M8c-7…" (unit route: the CLI live path needs a key)
+- [x] ISC-M8c-8: a nist-subset run's report, narrative and OSCAL are unchanged. Falsifier: the existing absence test unmodified; narrative and OSCAL rendered from the 0.5.0 positive vector's report on pre-M8 `main` and on this branch are identical after UUID and timestamp normalisation. — evidence: absence test unmodified and passing; CLI output hashes beb0a968… and 5671c626… unchanged; no diff against `main` in nist-subset.yaml
+- [x] ISC-M8c-9: PoC-7.6.2 measures continuity per agent from the first index the stream shows, and its rationale names the range seen per agent. A window of steps 5, 6, 7 is `satisfied`; 5, 7 is `not-satisfied` naming step 6; a repeat or a descent is `not-satisfied`. Falsifier: fixture streams, one fault each. — evidence: fixtures `step-window`, `step-window-gap`; main-loop probe: 5,6,7 satisfied naming range 5–7; 5,7 names step 6; repeat and descent not-satisfied
+- [x] ISC-M8c-10: the PoC-7.6.2 `intent` and `notAssessed` are true of the new rule, changed by the minimum needed, and the change is listed before and after for the owner. `notAssessed` says records before the first one leave no gap. Falsifier: Read against the code. — evidence: `git diff main -- fixtures/controls/poc-c7-subset.yaml`: PoC-7.6.2 intent and notAssessed only, two edits
+- [x] ISC-M8c-11: full suite green, typecheck clean; every pre-existing assertion that had to change is listed with its reason. Falsifier: `bun test`, `bun run typecheck`, `git diff` over pre-existing test files. — evidence: `bun test` 380 pass / 3 skip / 0 fail, 383 tests, 21 files; `tsc --noEmit` clean. Pre-existing assertions changed: one in agent-loop.test.ts (its scripted model now collects and cites; the test is about loop exit, which still holds) and one in citation-guard.test.ts (empty citations now pass only for a non-conformance status)
+- [ ] ISC-M8c-12: branch pushed, PR open against `main`, CI green on the PR's head commit. Falsifier: `gh pr checks` with the head SHA compared.
+
+## Decisions (M8c, 2026-09-28)
+
+- 2026-09-28 (`partially-satisfied` included): the owner approved refusing `satisfied` with nothing cited. `partially-satisfied` has the same hole and was included; flagged to him as a choice he can narrow.
+- 2026-09-28 (no second look elected, logged per the visibility floor): this change touches the agent loop and the citation guard on a public repo. No independent review was run. Reasons: the diff is small, every claim was re-probed end to end by the main loop with its own scripts, two independent reviews ran on the adjacent code within the last day, and the change lands as a PR for the owner, unmerged.
+- 2026-09-28 (delegate): built by the same execution-leg delegate as M8b, from the ISA claims plus a brief. The terminal summary moved into `src/cli/summary.ts` so it could be tested without an API key; `finalizeJudgment` is exported for its test.
+
+## Not yet verified (M8c)
+
+- No live model run. Whether a real model recovers well from the refusal message is unknown; the scripted cases prove the loop, not the model.
+- How a real OSCAL consumer displays the new remarks.
