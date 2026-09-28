@@ -1,11 +1,11 @@
 ---
 task: mlassure 1.0 course — M8c red-team follow-ups: cited verdicts, scope in the report, sequence windows
 slug: mlassure-1-0-course
-phase: climbing
-progress: 73/74
+phase: complete
+progress: 74/74
 mode: algorithm
 started: 2026-09-25T07:30:00Z
-updated: 2026-09-28T06:00:00Z
+updated: 2026-09-28T06:10:00Z
 project: mlassure
 principal_stated_goal: "pick up mlassure, chart a course forward to 1.0 within the context of my other relevant work, im going to bed, don't stop to ask for permissions, push ahead as much as possible, leave me a list of blockers i need to help with, you have 4 hours to reflect, pick and direction, polan out the work, and move forward, the linux foundaiton ltds proof of control work and repository is really relevant here"
 principal_stated_goal_source: prompt
@@ -1372,7 +1372,7 @@ Read for this design: `schema/poc-evidence.schema.json`, `schema/README.md`, `ch
 - [x] ISC-M8c-9: PoC-7.6.2 measures continuity per agent from the first index the stream shows, and its rationale names the range seen per agent. A window of steps 5, 6, 7 is `satisfied`; 5, 7 is `not-satisfied` naming step 6; a repeat or a descent is `not-satisfied`. Falsifier: fixture streams, one fault each. — evidence: fixtures `step-window`, `step-window-gap`; main-loop probe: 5,6,7 satisfied naming range 5–7; 5,7 names step 6; repeat and descent not-satisfied
 - [x] ISC-M8c-10: the PoC-7.6.2 `intent` and `notAssessed` are true of the new rule, changed by the minimum needed, and the change is listed before and after for the owner. `notAssessed` says records before the first one leave no gap. Falsifier: Read against the code. — evidence: `git diff main -- fixtures/controls/poc-c7-subset.yaml`: PoC-7.6.2 intent and notAssessed only, two edits
 - [x] ISC-M8c-11: full suite green, typecheck clean; every pre-existing assertion that had to change is listed with its reason. Falsifier: `bun test`, `bun run typecheck`, `git diff` over pre-existing test files. — evidence: `bun test` 380 pass / 3 skip / 0 fail, 383 tests, 21 files; `tsc --noEmit` clean. Pre-existing assertions changed: one in agent-loop.test.ts (its scripted model now collects and cites; the test is about loop exit, which still holds) and one in citation-guard.test.ts (empty citations now pass only for a non-conformance status)
-- [ ] ISC-M8c-12: branch pushed, PR open against `main`, CI green on the PR's head commit. Falsifier: `gh pr checks` with the head SHA compared.
+- [x] ISC-M8c-12: branch pushed, PR open against `main`, CI green on the PR's head commit. Falsifier: `gh pr checks` with the head SHA compared. — evidence: PR #7; CI run 36384638969 on head c77f0b9: 379 pass, 4 skip, 0 fail
 
 ## Decisions (M8c, 2026-09-28)
 
