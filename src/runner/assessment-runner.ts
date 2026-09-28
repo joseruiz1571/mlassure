@@ -18,8 +18,10 @@ import {
   UnknownCollectorsError,
   DeterministicCheckFamilyError,
   InvalidCollectorCatalogError,
+  ControlSetFamilyError,
 } from "../agent/agent.js";
 import { findDeterministicCheck } from "../agent/deterministic-checks.js";
+import { AWS_SAGEMAKER_FAMILY } from "../providers/aws-sagemaker.js";
 
 /** A cited evidence item retained for downstream output (OSCAL, narrative). */
 export type CitedEvidence = {
@@ -37,6 +39,12 @@ export type ControlResult = {
    * runAssessment always populates it.
    */
   controlIntent?: string;
+  /**
+   * The control's `notAssessed` text, copied only when the control set has
+   * one (M8b): what the requirement asks that mlassure did not assess. Both
+   * renderers carry it. The control's `note` is never copied.
+   */
+  notAssessed?: string;
   /**
    * The control's declared pattern, copied at construction time. Verified
    * (M3c) to always match the pattern actually used to produce `judgment` —
@@ -141,6 +149,14 @@ export type AssessmentReport = {
    * 1-based replica index when --repeat N is used. Absent on single runs.
    */
   replica?: number;
+  /**
+   * The target family (M8b): the control set's declared `family`, equal to
+   * the provider's by the preflight; otherwise the provider's family when it
+   * is not `aws-sagemaker`; otherwise absent, so a SageMaker report keeps its
+   * pre-M8b shape. The narrative reads it to word labels for the family, so
+   * report wording follows the provider even when the control file is silent.
+   */
+  family?: string;
 };
 
 export async function runAssessment(
@@ -159,6 +175,13 @@ export async function runAssessment(
     .map((c) => c.id);
   if (missingChecks.length > 0) {
     throw new MissingDeterministicChecksError(missingChecks);
+  }
+
+  // Preflight (M8b): a control set that names its family runs against that
+  // family only. Its control ids and collector names may happen to exist in
+  // another family too; the declared family is the author's intent.
+  if (controlSet.family !== undefined && controlSet.family !== provider.family) {
+    throw new ControlSetFamilyError(controlSet.family, provider.family);
   }
 
   // Preflight (M8a): collector names and control ids are strings, so the
@@ -233,6 +256,7 @@ export async function runAssessment(
     results.push({
       controlId: control.id,
       controlIntent: control.intent,
+      ...(control.notAssessed !== undefined ? { notAssessed: control.notAssessed } : {}),
       pattern: control.pattern,
       judgment,
       evidenceCount: store.size(),
@@ -250,11 +274,14 @@ export async function runAssessment(
     });
   }
 
+  const reportFamily =
+    controlSet.family ?? (provider.family !== AWS_SAGEMAKER_FAMILY ? provider.family : undefined);
   return {
     targetName: target.modelName,
     endpointName: target.endpointName,
     controlSetVersion: controlSet.version,
     runAt: new Date().toISOString(),
     results,
+    ...(reportFamily !== undefined ? { family: reportFamily } : {}),
   };
 }

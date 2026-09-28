@@ -110,6 +110,12 @@ function buildFinding(
     { name: "evidence-coverage", value: String(result.evidenceCoverage), ns: MLASSURE_NS },
     { name: "coverage-confidence", value: result.coverageConfidence, ns: MLASSURE_NS },
   ];
+  // M8b, additive: what the requirement asks that mlassure did not assess,
+  // so a machine consumer sees the limit next to the verdict. Absent (zero
+  // props) for a control that declares none, which is every SageMaker control.
+  if (result.notAssessed !== undefined) {
+    props.push({ name: "not-assessed", value: result.notAssessed, ns: MLASSURE_NS });
+  }
   for (const gap of j.gaps) {
     props.push({ name: "gap", value: gap, ns: MLASSURE_NS });
   }

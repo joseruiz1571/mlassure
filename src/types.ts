@@ -142,6 +142,13 @@ export type ControlItem = {
   collectors: string[];
   note?: string;
   /**
+   * What the control's requirement asks that mlassure did not assess (M8b),
+   * as one line. Auditor-facing, unlike `note` (an authoring remark that is
+   * never rendered): the runner copies it onto the result and both renderers
+   * carry it, only when present.
+   */
+  notAssessed?: string;
+  /**
    * Optional tag-provenance history, oldest first. Array order is
    * authoritative for the migration chain; `assigned` dates must agree
    * with it (non-decreasing). When present it must be non-empty and its
@@ -153,6 +160,12 @@ export type ControlItem = {
 export type ControlSet = {
   version: string;
   description?: string;
+  /**
+   * The provider family this control set was written for (M8b). When
+   * present, `runAssessment()` refuses a provider of any other family.
+   * Optional so control sets written before M8b keep loading.
+   */
+  family?: string;
   controls: ControlItem[];
 };
 

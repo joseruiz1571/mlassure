@@ -4,7 +4,7 @@ import type { LlmProvider, LlmToolResultBlock } from "../llm/llm-provider.interf
 import { EvidenceStore } from "../store/evidence-store.js";
 import { buildToolDefs, SUBMIT_JUDGMENT_TOOL } from "../tools/registry.js";
 import { executeCollector, isKnownCollector } from "../tools/executor.js";
-import { buildSystemPrompt, buildInitialMessage } from "./prompts.js";
+import { buildSystemPrompt, buildInitialMessage, DEFAULT_WORDING } from "./prompts.js";
 import { validateCitations } from "../guard/citation-guard.js";
 import { parseJudgment } from "../guard/judgment-validator.js";
 import { findDeterministicCheck } from "./deterministic-checks.js";
@@ -119,12 +119,30 @@ export class DeterministicCheckFamilyError extends Error {
   }
 }
 
+/**
+ * Thrown by `runAssessment()`'s preflight when a control set that names its
+ * family (M8b) is run against a provider of another family.
+ */
+export class ControlSetFamilyError extends Error {
+  constructor(
+    public readonly controlSetFamily: string,
+    public readonly family: string
+  ) {
+    super(
+      `Control set is written for the "${controlSetFamily}" family but the target's provider is "${family}". Aborting before any control is assessed.`
+    );
+    this.name = "ControlSetFamilyError";
+  }
+}
+
 export async function assessControl(
   control: ControlItem,
   target: AssessmentTarget,
   provider: EvidenceProvider,
   llm: LlmProvider
 ): Promise<AssessControlResult> {
+  const wording = provider.wording ?? DEFAULT_WORDING;
+
   // Attestation is a property of the PATTERN, not of how many collectors happen
   // to be tagged — human sign-off cannot be evidenced by any amount of AWS API
   // data, so this control never invokes the LLM or any collector, regardless of
@@ -138,7 +156,7 @@ export async function assessControl(
         status: "insufficient-evidence",
         confidence: "high",
         rationale:
-          "This control's pattern is \"attestation\": conformance cannot be determined from automated AWS evidence collection under any circumstance, so no collectors were invoked and no LLM assessment was run.",
+          `This control's pattern is "attestation": conformance cannot be determined from ${wording.attestationEvidence} under any circumstance, so no collectors were invoked and no LLM assessment was run.`,
         evidenceCited: [],
         gaps: [
           "Requires human attestation — see the control's intent for the specific sign-off required. This verdict was generated directly from the control's pattern, without an LLM call.",
@@ -172,7 +190,7 @@ export async function assessControl(
 
   const store = new EvidenceStore();
   const tools = [...buildToolDefs(control.collectors, provider), SUBMIT_JUDGMENT_TOOL];
-  const systemPrompt = buildSystemPrompt(control);
+  const systemPrompt = buildSystemPrompt(control, wording);
   const calledCollectors = new Set<string>();
   // Collector identity is only known at the point of the tool call (block.name);
   // Evidence.source is a provider-defined free-text string unrelated to the
@@ -183,7 +201,7 @@ export async function assessControl(
   const messages: Array<{
     role: "user" | "assistant";
     content: unknown;
-  }> = [{ role: "user", content: buildInitialMessage(target) }];
+  }> = [{ role: "user", content: buildInitialMessage(target, wording) }];
 
   for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     const response = await llm.complete({

@@ -25,7 +25,28 @@ export interface EvidenceProvider {
   readonly collectors: Readonly<Record<string, CollectorSpec>>;
   /** Runs one collector. Throws on a name that is not in `collectors`. */
   collect(name: string, target: AssessmentTarget): Promise<CollectorResult>;
+  /**
+   * How the prompts and the attestation bypass describe this family's
+   * target (M8b). Absent means the SageMaker wording (`DEFAULT_WORDING` in
+   * `agent/prompts.ts`), which is what every provider got before M8b.
+   */
+  readonly wording?: FamilyWording;
 }
+
+/**
+ * The family-specific sentences the agent sends or writes. Everything else
+ * in the prompts is family-neutral and stays in `agent/prompts.ts`.
+ */
+export type FamilyWording = {
+  /** System prompt, first paragraph: what is being assessed. */
+  readonly task: string;
+  /** System prompt, "Your tools": where the collectors read from. */
+  readonly tools: string;
+  /** The first user message of the agent loop. */
+  initialMessage(target: AssessmentTarget): string;
+  /** Completes "conformance cannot be determined from …" in the attestation bypass rationale. */
+  readonly attestationEvidence: string;
+};
 
 /**
  * Own-property check, never `in`: `"constructor" in {}` is true, and a model

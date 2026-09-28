@@ -180,9 +180,26 @@ CC-2 — *who* produced the manifest — stays **Tier 2** under the current C8 t
 
 ---
 
-## 6. What mlassure could be *for* Proof-of-Control (milestone M8, not built)
+## 6. mlassure as an assessor of Proof-of-Control evidence (milestone M8b)
 
-The standard ships its 127 requirements as `checklist/poc-checklist.json` "for GRC tooling and automation." mlassure is that kind of tool: a control set with agent-pattern tags, deterministic checks where the answer is mechanical, an LLM loop only where judgment is required, an OSCAL Assessment Results document out. A Proof-of-Control control family for mlassure would take a system's evidence tokens and conformance statement as the target and answer the procurement binary as an OSCAL AR — with `deterministic` checks for 7.7.1 (validates against the published schema), 7.7.3 (every digest tagged), 7.7.5 (duplicate keys refused), 7.6.2 (`step_index` gapless); `attestation` for 7.3.2 (key custody is a named human's statement); `synthesis` for 10.2 (is the disclosure complete against the mechanism inventory). That requires mlassure's provider interface to stop being SageMaker-shaped, which is the design decision M8 is waiting on.
+Sections 1–5 grade mlassure's *own* custody bundle. This section is about a different subject: mlassure reading *another system's* Proof-of-Control evidence. Nothing in it changes the grades above.
+
+The standard ships its 127 requirements as `checklist/poc-checklist.json` "for GRC tooling and automation." mlassure is that kind of tool, and M8b adds a control family for it: `fixtures/controls/poc-c7-subset.yaml`, run against a target of family `poc-evidence` — a JSONL stream of evidence tokens plus an optional trust-assumption disclosure. The OSCAL AR it writes carries one finding per control.
+
+**What it assesses, and what it does not.** Four of the six requirements are written about the deployment: 7.7.1 asks that the schema be "published where a verifier can obtain it" and that "the deployed implementation's own output" validate; 7.7.3 asks that "a verifier presented with an unidentified digest rejects it"; 7.7.5 that "a parser rejects duplicate object keys." mlassure holds the evidence, not the deployment, so each control's `intent` states the property of the evidence that is checked, and its `notAssessed` field quotes the requirement and names the rest as not assessed; both the narrative and the OSCAL finding carry it.
+
+| Control | Pattern | Assessed from the evidence | Not assessed |
+| --- | --- | --- | --- |
+| 7.7.1 | deterministic | every record validates against the standard's own schema (pinned at commit `22c7b62`) | whether the deployment publishes a schema, whether it covers every field, whether the stream is the deployment's own output; `format` annotations; the C7.7.2 rule forbidding floating point (a float that converts exactly is judged by the schema alone) |
+| 7.7.3 | deterministic | every claim recognised as a digest by key name, at any depth, carries a recognised tag at the width it implies; `alg` present | whether the deployment's verifier rejects an untagged digest; a digest under another name; signatures (none are verified) |
+| 7.7.5 | deterministic | no record contains a repeated key, read from raw text by a parser that refuses duplicates | whether the deployment's parser refuses them |
+| 7.6.2 | deterministic | per `agent_id`, `step_index` starts at 0 and rises by exactly 1 in stream order | a record removed after the end of a sequence; `chain_head` replay; continuity across streams |
+| 7.3.2 | attestation | nothing — key custody is not visible in a token; always `insufficient-evidence` | all of it |
+| 10.2 (10.2.1, 10.2.2) | synthesis | whether the disclosure covers each claim and mechanism, with categories from the draft set — an LLM judgment | whether the claim register is complete; whether assumptions hold; the disclosure format the WG has not yet defined |
+
+A record with a duplicate key has no single reading, so 7.7.1, 7.7.3 and 7.6.2 return `insufficient-evidence` for it and 7.7.5 reports the fault. Numbers are judged by the form written in the record: 7.6.2 reads `step_index` only as plain decimal digits, and 7.7.1 returns `insufficient-evidence` for a record holding a number that does not convert to a double exactly, so neither judges a value the record does not hold. 7.7.3 returns `insufficient-evidence` when it found no digest to check. The fixtures in `fixtures/targets/poc-evidence/` are derived from the standard's published vectors, unsigned, one fault per negative stream; their README states the verdict each control must give on each stream and the test suite asserts it.
+
+A `satisfied` finding from this family says that the stream has the property the control's intent names. It does not say the assessed system conforms to Proof-of-Control, at any Tier, and it says nothing about mlassure's own tier placement in §2.1.
 
 ---
 

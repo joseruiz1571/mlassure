@@ -106,12 +106,13 @@ function renderGaps(judgment: Judgment): string | null {
  * a real but different situation that does NOT require human attestation, and
  * telling an auditor it does misdirects remediation.
  */
-function renderAttestationCallout(result: ControlResult): string | null {
+function renderAttestationCallout(result: ControlResult, sageMakerWording: boolean): string | null {
   if (result.judgment.status !== "insufficient-evidence") return null;
   if (usesAttestationCallout(result.pattern)) {
+    const source = sageMakerWording ? "automated AWS evidence" : "automated evidence collection";
     return (
       "> **Requires human attestation.** This control's pattern is `attestation` " +
-      "— conformance cannot be determined from automated AWS evidence under any " +
+      `— conformance cannot be determined from ${source} under any ` +
       "circumstance. A human reviewer must attest to this control's status directly."
     );
   }
@@ -147,8 +148,14 @@ function renderTagProvenance(result: ControlResult): string | null {
   return `### Tag provenance\n\n${lines.join("\n")}`;
 }
 
+/** What the requirement asks that mlassure did not assess (M8b), verbatim; no line at all when the control declares none. */
+function renderNotAssessed(result: ControlResult): string | null {
+  if (result.notAssessed === undefined) return null;
+  return `**Not assessed:** ${result.notAssessed}`;
+}
+
 /** Heading format `## <controlId>: <icon> <label>` is deliberate: the colon distinguishes a control heading from the `## Summary` heading for any consumer counting per-control sections. */
-function renderControlSection(result: ControlResult): string {
+function renderControlSection(result: ControlResult, sageMakerWording: boolean): string {
   const j = result.judgment;
   const rationale =
     j.rationale.trim().length > 0
@@ -166,10 +173,11 @@ function renderControlSection(result: ControlResult): string {
     // hardcoding one, since M3d added a second code-determined pattern.
     `**Confidence (evidence coverage):** ${result.coverageConfidence}\n**Confidence (${isCodeDetermined(result.pattern) ? `code-determined (${result.pattern} pattern)` : "model self-reported"}):** ${j.confidence}`,
     rationale,
+    renderNotAssessed(result),
     `### Evidence\n\n${renderEvidence(result)}`,
     renderTagProvenance(result),
     renderGaps(j),
-    renderAttestationCallout(result),
+    renderAttestationCallout(result, sageMakerWording),
   ].filter((block): block is string => block !== null);
   return blocks.join("\n\n");
 }
@@ -191,15 +199,22 @@ export function toNarrativeMarkdown(
 ): string {
   const controlSetLabel =
     controlSet?.version ?? report.controlSetVersion ?? "UNKNOWN (control set version not recorded)";
+  // M8b: SageMaker wording ("Endpoint", "AWS") stays exactly as it was for a
+  // report with no family (every report from a control set that declares
+  // none) or the SageMaker family; any other declared family gets
+  // family-neutral wording instead of a claim that it came from AWS.
+  const sageMakerWording = report.family === undefined || report.family === "aws-sagemaker";
   const header = [
     `# mlassure Assurance Narrative — ${report.targetName}`,
     "",
-    `**Endpoint:** ${report.endpointName}  `,
+    `**${sageMakerWording ? "Endpoint" : "Target reference"}:** ${report.endpointName}  `,
     `**Control set:** ${controlSetLabel}  `,
     `**Run at:** ${report.runAt}`,
   ].join("\n");
 
-  const sections = report.results.map(renderControlSection).join("\n\n---\n\n");
+  const sections = report.results
+    .map((r) => renderControlSection(r, sageMakerWording))
+    .join("\n\n---\n\n");
 
   return [header, renderSummary(report), sections].join("\n\n");
 }

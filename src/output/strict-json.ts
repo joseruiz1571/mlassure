@@ -34,7 +34,18 @@ export class StrictJsonSyntaxError extends Error {
 
 const WS = new Set([" ", "\t", "\n", "\r"]);
 
-export function parseJsonStrict(text: string): unknown {
+export type StrictJsonOptions = {
+  /**
+   * Called for every number with its text exactly as written and its path
+   * (M8b). The parsed value is still `Number(written)`, which can lose
+   * information (`1e-324` → 0, `9007199254740993` → …992); a caller that
+   * must not judge a converted value it cannot trust reads the written form
+   * here. Absent, parsing behaves exactly as before.
+   */
+  onNumber?: (written: string, path: string) => void;
+};
+
+export function parseJsonStrict(text: string, options: StrictJsonOptions = {}): unknown {
   let i = 0;
   const n = text.length;
 
@@ -89,7 +100,7 @@ export function parseJsonStrict(text: string): unknown {
     return fail("unterminated string");
   };
 
-  const parseNumber = (): number => {
+  const parseNumber = (path: string): number => {
     const start = i;
     if (text[i] === "-") i++;
     if (text[i] === "0") {
@@ -110,7 +121,9 @@ export function parseJsonStrict(text: string): unknown {
       if (!(text[i]! >= "0" && text[i]! <= "9")) fail("bad exponent");
       while (i < n && text[i]! >= "0" && text[i]! <= "9") i++;
     }
-    return Number(text.slice(start, i));
+    const written = text.slice(start, i);
+    options.onNumber?.(written, path);
+    return Number(written);
   };
 
   const parseValue = (path: string): unknown => {
@@ -133,7 +146,15 @@ export function parseJsonStrict(text: string): unknown {
         seen.add(key);
         skipWs();
         expect(":");
-        obj[key] = parseValue(`${path}.${key}`);
+        // defineProperty, not assignment: `obj["__proto__"] = v` sets the
+        // prototype instead of an own key, so the member would vanish from
+        // the result. JSON.parse keeps it as an ordinary key; so must this.
+        Object.defineProperty(obj, key, {
+          value: parseValue(`${path}.${key}`),
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
         skipWs();
         if (text[i] === ",") {
           i++;
@@ -166,7 +187,7 @@ export function parseJsonStrict(text: string): unknown {
     if (c === "t") { if (text.startsWith("true", i)) { i += 4; return true; } fail("bad literal"); }
     if (c === "f") { if (text.startsWith("false", i)) { i += 5; return false; } fail("bad literal"); }
     if (c === "n") { if (text.startsWith("null", i)) { i += 4; return null; } fail("bad literal"); }
-    if (c === "-" || (c >= "0" && c <= "9")) return parseNumber();
+    if (c === "-" || (c >= "0" && c <= "9")) return parseNumber(path);
     return fail(`unexpected character "${c}"`);
   };
 

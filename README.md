@@ -152,6 +152,34 @@ cosign verify-blob --bundle manifest.sig.bundle \
 
 ---
 
+## Assessing Proof-of-Control evidence
+
+mlassure can assess a stream of [Proof-of-Control](https://github.com/LFDT-ProofOfControl/ov-poc-standard) evidence tokens the way it assesses a SageMaker model. The target file is a descriptor with `"family": "poc-evidence"` that points at a JSONL stream (one token per line) and, optionally, a trust-assumption disclosure; paths resolve relative to the descriptor and must name files inside its directory, symlinks followed. mlassure reads the stream's raw text and parses each record itself with a parser that refuses duplicate keys, so a token cannot reach the checks already resolved last-wins.
+
+```bash
+# Scaffold (no API key): loads the six controls and the target
+bun run dev -- assess --controls fixtures/controls/poc-c7-subset.yaml --target fixtures/targets/poc-stream-clean.json
+
+# Full run: the four deterministic controls and the attestation control make no LLM call;
+# PoC-10.2 is an agent-loop judgment and needs ANTHROPIC_API_KEY
+bun run dev -- assess --controls fixtures/controls/poc-c7-subset.yaml --target fixtures/targets/poc-stream-clean.json \
+  --oscal out/poc-results.json --narrative out/poc-report.md --bundle out/poc-bundle-$(date +%Y%m%dT%H%M%S)
+bun run dev -- verify-bundle out/poc-bundle-<timestamp>
+```
+
+| Control | Pattern | What mlassure checks in the evidence |
+|---------|---------|--------------------------------------|
+| `PoC-7.7.1` | deterministic | every record validates against the standard's own schema, pinned byte for byte at `fixtures/schemas/poc-evidence.schema.json` |
+| `PoC-7.7.3` | deterministic | every claim recognised as a digest by key name, at any depth, carries a recognised algorithm tag at the width that tag implies, and `alg` is present; a stream with no such claim is `insufficient-evidence` |
+| `PoC-7.7.5` | deterministic | no record contains a repeated object key |
+| `PoC-7.6.2` | deterministic | per `agent_id`, `step_index` starts at 0 and rises by exactly 1 |
+| `PoC-7.3.2` | attestation | nothing: key custody is not visible in a token, so the verdict is always `insufficient-evidence` |
+| `PoC-10.2` | synthesis | the disclosure covers every claim and mechanism, with categories from the draft set (LLM judgment) |
+
+Most of these requirements are written about the deployment: *a parser rejects…*, *a verifier rejects…*, *published where a verifier can obtain it*. mlassure reads the evidence, so it assesses the evidence half and no more. Each control's `notAssessed` field quotes the requirement and names what was not assessed, and it is carried into the narrative ("Not assessed") and the OSCAL finding (`not-assessed` prop) next to the verdict. Signatures are not verified. A `satisfied` verdict here is a statement about the stream named in the control's intent; it is not a conformance claim for the system that produced the stream, and it is not a Proof-of-Control claim for anyone. [`fixtures/targets/poc-evidence/`](fixtures/targets/poc-evidence/README.md) holds a clean stream, ten single-fault streams and one stream padded with blank lines, derived from the standard's published vectors, with the verdict each control must give on each; [`docs/proof-of-control.md`](docs/proof-of-control.md) §6 says the same in the crosswalk.
+
+---
+
 ## Demo output
 
 `fraud-detection-v2` — clean monitoring setup, all 8 controls:
@@ -262,6 +290,10 @@ CLI (assess command)
 
 - **Reproducibility and run metadata** — assessments now record their own provenance, motivated by the control-wording variance study (whose runs needed fair cross-run comparison). `AssessmentReport` gains `llmModel`, `llmTemperature`, and `replica`; each `ControlResult` carries `controlIntent`, the exact control wording the agent was given (`src/runner/assessment-runner.ts`). The provider captures what Anthropic actually served — dated snapshot ID and per-call token usage — rather than only what was requested (`src/llm/anthropic-provider.ts`). New CLI flags: `--report` (AssessmentReport JSON to a path), `--model`, `--temperature` (0 is valid, guarded against `??`/falsy swallowing), and `--repeat N` (replicas with `-rNN` output suffixes). `MLASSURE_MODEL`, documented in `.env.example` since M1 but previously unread, is now honored; `ANTHROPIC_WORKSPACE_ID` optionally sets the `anthropic-workspace-id` header for identity-linked keys. Provider config covered by new unit tests (`src/llm/anthropic-provider.test.ts`).
 
+**Implemented (M8b, 2026-09-27, unreleased)**
+
+- **Proof-of-Control control family** — a second provider family, `poc-evidence` (`src/providers/poc-evidence.ts`), chosen by the target file's `family`. Four deterministic checks (`src/providers/poc-evidence-rules.ts`, registered in `src/agent/deterministic-checks.ts`), one attestation control, one synthesis control over the disclosure. Prompt sentences that named SageMaker come from the provider now; the SageMaker text is unchanged and pinned by the parity test, and a second pinned capture proves no SageMaker vocabulary reaches a Proof-of-Control prompt. See [Assessing Proof-of-Control evidence](#assessing-proof-of-control-evidence).
+
 **Designed**
 
 - **Live AWS read-only provider** — M4
@@ -303,7 +335,8 @@ M3a added SC-7, RA-3, and CA-7 by reusing existing collectors and patterns — z
 | M3g: custody chain (evidence bundle, verify-bundle, Cosign signing) | Shipped, live-verified (2026-07-22) |
 | 0.4.0: reproducibility flags + run metadata (model/temperature/repeat, served-model + usage capture, control intent on reports) | Shipped, unit-verified (2026-08-30) |
 | 0.5.0 / M5–M7: release hygiene, custody chain [`SPEC.md`](SPEC.md) + conformance vectors + strict-parse and algorithm-id checks, [Proof-of-Control crosswalk](docs/proof-of-control.md) | Shipped, unit-verified (2026-09-25) |
-| M8: target generalization + Proof-of-Control control family (assess a system's evidence tokens / conformance statement; OSCAL AR answers the procurement binary) | Designed — see `docs/proof-of-control.md` §6 |
+| M8a: generic `EvidenceProvider` (SageMaker becomes one family; behavior unchanged) | Built, unit-verified (2026-09-27), unreleased |
+| M8b: Proof-of-Control control family (six controls over an evidence-token stream; see [Assessing Proof-of-Control evidence](#assessing-proof-of-control-evidence)) | Built, unit-verified with a scripted LLM (2026-09-27), unreleased; no live `PoC-10.2` run yet |
 | M9: Tier-3 custody path (keyless Cosign + Rekor inclusion proof in the bundle, `verify-bundle --rekor`) | Planned — `docs/proof-of-control.md` §5 |
 | M4: live AWS read-only provider | Post-1.0 — deferred 2026-08-14: the demand story is OSCAL/ISO 42001-shaped, not AWS-shaped |
 
