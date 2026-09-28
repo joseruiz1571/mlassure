@@ -46,6 +46,12 @@ export type ControlResult = {
    */
   notAssessed?: string;
   /**
+   * The control's framework string: which text of the standard the verdict
+   * was judged against (M8c). Present only on a report whose family is set
+   * and is not `aws-sagemaker`, so a SageMaker result keeps its key set.
+   */
+  framework?: string;
+  /**
    * The control's declared pattern, copied at construction time. Verified
    * (M3c) to always match the pattern actually used to produce `judgment` —
    * `agent.ts` has exactly one pattern-runtime-branch (the attestation
@@ -157,6 +163,12 @@ export type AssessmentReport = {
    * report wording follows the provider even when the control file is silent.
    */
   family?: string;
+  /**
+   * Where the evidence came from and what the verdicts therefore do not
+   * say, as one sentence supplied by the family (M8c). Present only when
+   * `family` is set, is not `aws-sagemaker`, and the provider supplies one.
+   */
+  evidenceScope?: string;
 };
 
 export async function runAssessment(
@@ -226,6 +238,13 @@ export async function runAssessment(
     throw new UnknownCollectorsError(provider.family, unknownCollectors);
   }
 
+  const reportFamily =
+    controlSet.family ?? (provider.family !== AWS_SAGEMAKER_FAMILY ? provider.family : undefined);
+  // M8c: scope travels with the verdict for a declared non-SageMaker family
+  // only, the same rule the narrative's family wording follows.
+  const familyScoped = reportFamily !== undefined && reportFamily !== AWS_SAGEMAKER_FAMILY;
+  const evidenceScope = familyScoped ? provider.wording?.evidenceScope : undefined;
+
   const results: ControlResult[] = [];
 
   for (const control of controlSet.controls) {
@@ -257,6 +276,7 @@ export async function runAssessment(
       controlId: control.id,
       controlIntent: control.intent,
       ...(control.notAssessed !== undefined ? { notAssessed: control.notAssessed } : {}),
+      ...(familyScoped ? { framework: control.framework } : {}),
       pattern: control.pattern,
       judgment,
       evidenceCount: store.size(),
@@ -274,8 +294,6 @@ export async function runAssessment(
     });
   }
 
-  const reportFamily =
-    controlSet.family ?? (provider.family !== AWS_SAGEMAKER_FAMILY ? provider.family : undefined);
   return {
     targetName: target.modelName,
     endpointName: target.endpointName,
@@ -283,5 +301,6 @@ export async function runAssessment(
     runAt: new Date().toISOString(),
     results,
     ...(reportFamily !== undefined ? { family: reportFamily } : {}),
+    ...(evidenceScope !== undefined ? { evidenceScope } : {}),
   };
 }

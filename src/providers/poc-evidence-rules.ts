@@ -291,8 +291,11 @@ export function duplicateKeys(records: readonly StreamRecord[]): RuleDecision {
 // ---------------------------------------------------------------- C7.6.2
 
 /**
- * Per `agent_id`, in stream order, `step_index` starts at 0 and rises by
- * exactly 1. Any record that cannot be read for the rule makes the verdict
+ * Per `agent_id`, in stream order, `step_index` rises by exactly 1 from the
+ * first index the stream shows for that agent (M8c: the standard's auditor
+ * evidence computes continuity "over a sampled window", so a window need not
+ * start at 0). The price: records before the first one leave no gap, as
+ * records after the last one never did. Any record that cannot be read for the rule makes the verdict
  * insufficient-evidence even when a gap is visible elsewhere: the unreadable
  * record may be the missing step.
  */
@@ -334,9 +337,13 @@ export function stepContinuity(records: readonly StreamRecord[]): RuleDecision {
   }
 
   const last = new Map<string, bigint>();
+  // The range the stream shows per agent: its first index and its highest.
+  const seen = new Map<string, { first: bigint; high: bigint }>();
   for (const { at, agent, step, r } of steps) {
+    const range = seen.get(agent);
+    seen.set(agent, range === undefined ? { first: step, high: step } : { first: range.first, high: step > range.high ? step : range.high });
     const prev = last.get(agent);
-    const expected = prev === undefined ? 0n : prev + 1n;
+    const expected = prev === undefined ? step : prev + 1n;
     if (step === expected) {
       last.set(agent, step);
     } else if (step > expected) {
@@ -349,10 +356,10 @@ export function stepContinuity(records: readonly StreamRecord[]): RuleDecision {
       addViolation(s, at, `agent ${agent}: ${label(r)} has step_index ${step} after step_index ${prev}, so the sequence descends`);
     }
   }
-  const ranges = [...last.entries()].map(([agent, top]) => `${agent} 0–${top}`).join(", ");
+  const ranges = [...seen.entries()].map(([agent, { first, high }]) => `${agent} ${first}–${high}`).join(", ");
   return decide(s, records, {
-    satisfied: `For each of the ${last.size} agent_id values in the ${records.length} records, step_index starts at 0 and rises by exactly 1 in stream order (${ranges}); no sequence shows a gap, repeat or descent.`,
-    violated: "The per-agent step_index sequence is broken:",
+    satisfied: `For each of the ${seen.size} agent_id values in the ${records.length} records, step_index rises by exactly 1 in stream order from the first index the stream shows for that agent (ranges seen: ${ranges}); no sequence shows a gap, repeat or descent. Records before the first index or after the last one shown would leave no gap.`,
+    violated: `The per-agent step_index sequence is broken (ranges seen: ${ranges}):`,
     undetermined: "The per-agent sequence cannot be reconstructed:",
   });
 }

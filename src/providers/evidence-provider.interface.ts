@@ -46,6 +46,13 @@ export type FamilyWording = {
   initialMessage(target: AssessmentTarget): string;
   /** Completes "conformance cannot be determined from …" in the attestation bypass rationale. */
   readonly attestationEvidence: string;
+  /**
+   * One sentence saying where the evidence came from and what the verdicts
+   * therefore do not claim (M8c). Carried on the report, and printed in the
+   * narrative and the terminal summary, for a non-SageMaker family only.
+   * Never sent to the model.
+   */
+  readonly evidenceScope?: string;
 };
 
 /**

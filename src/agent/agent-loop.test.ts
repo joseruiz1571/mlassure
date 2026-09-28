@@ -281,9 +281,12 @@ describe("agent loop — attestation pattern bypasses the LLM loop (M3b)", () =>
     const submittingLlm: LlmProvider = {
       async complete(): Promise<LlmCompletionResult> {
         calls++;
+        // M8c: a satisfied verdict must cite evidence, so the model collects
+        // (fixed id below) and cites it in the same response.
         return {
           stopReason: "tool_use",
           content: [
+            { type: "tool_use", id: randomUUID(), name: "getDataCaptureConfig", input: {} },
             {
               type: "tool_use",
               id: randomUUID(),
@@ -293,7 +296,7 @@ describe("agent loop — attestation pattern bypasses the LLM loop (M3b)", () =>
                 status: "satisfied",
                 confidence: "high",
                 rationale: "ok",
-                evidenceCited: [],
+                evidenceCited: ["ev-isc-232"],
                 gaps: [],
               },
             },
@@ -302,7 +305,15 @@ describe("agent loop — attestation pattern bypasses the LLM loop (M3b)", () =>
       },
     };
 
-    await assessControl(MOCK_CONTROL, MOCK_TARGET, makeProvider(), submittingLlm);
+    const provider = makeProvider({
+      getDataCaptureConfig: async () => ({
+        id: "ev-isc-232",
+        source: "data-capture",
+        retrievedAt: new Date().toISOString(),
+        payload: { enabled: true },
+      }),
+    });
+    await assessControl(MOCK_CONTROL, MOCK_TARGET, provider, submittingLlm);
 
     expect(calls).toBeGreaterThanOrEqual(1);
   });

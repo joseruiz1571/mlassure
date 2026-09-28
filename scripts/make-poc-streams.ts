@@ -125,6 +125,14 @@ modify = replaceOnce("step-2", modify, `"nonce": "n-00000001"`, `"nonce": "n-000
 const clean = [allowRead, ref2, deny, modify];
 const replaceFirst = (record: string) => [record, ...clean.slice(1)];
 
+/** A ref-1 record moved from step `from` to step `to`, with tree_size to + 1 so the record stays a leaf of its tree. */
+function window(record: string, from: number, to: number): string {
+  const moved = replaceOnce(`step-${to}`, record, `"step_index": ${from},`, `"step_index": ${to},`);
+  const tree = /"tree_size": \d+,/.exec(moved);
+  if (tree === null) fail(`step-${to}: no tree_size to move`);
+  return replaceOnce(`step-${to}`, moved, tree[0], `"tree_size": ${to + 1},`);
+}
+
 const STREAMS: Record<string, string[]> = {
   clean,
   empty: [],
@@ -144,6 +152,10 @@ const STREAMS: Record<string, string[]> = {
   "lossy-number": replaceFirst(replaceOnce("iat", allowRead, `"iat": 1754400000,`, `"iat": 1754400000.0000000001,`)),
   // Whitespace-only lines are not records: one mid-stream, two extra at the end.
   "blank-lines": [allowRead, ref2, "   ", deny, modify, "", ""],
+  // A sampled window (M8c): agent ref-1 shows steps 5, 6, 7 and none before.
+  "step-window": [window(allowRead, 0, 5), ref2, window(deny, 1, 6), window(modify, 2, 7)],
+  // The same window with step 6 deleted.
+  "step-window-gap": [window(allowRead, 0, 5), ref2, window(modify, 2, 7)],
 };
 
 const BLANK = /^[ \t\r]*$/;

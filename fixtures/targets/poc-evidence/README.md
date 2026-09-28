@@ -61,6 +61,8 @@ this whole table.
 | `step-index-float.jsonl` | record 2 writes `step_index` as `1.0` | satisfied | satisfied | satisfied | insufficient |
 | `lossy-number.jsonl` | record 0 writes `iat` as `1754400000.0000000001`, which a double cannot hold | insufficient | satisfied | satisfied | satisfied |
 | `blank-lines.jsonl` | not a fault: the clean records with a whitespace-only line after record 1 and two extra blank lines at the end | satisfied | satisfied | satisfied | satisfied |
+| `step-window.jsonl` | not a fault: agent ref-1 shows steps 5, 6, 7 and none before (records 0, 2, 3 moved up by 5, `tree_size` one above each step) | satisfied | satisfied | satisfied | satisfied |
+| `step-window-gap.jsonl` | `step-window.jsonl` with step 6 deleted | satisfied | satisfied | satisfied | **not satisfied** |
 
 *Insufficient* on `duplicate-key.jsonl` is deliberate: a record with two readings
 has no single value to validate, tag-check or sequence, so those three rules say
@@ -73,6 +75,12 @@ sequence. `1754400000.0000000001` converts to `1754400000`, so the schema would 
 judging a value the record does not hold, and 7.7.1 says so instead. Blank lines
 are not records: record indexes count records, and each record also carries its
 line number and the stream's count of skipped blank lines.
+
+7.6.2 measures continuity per agent from the first index the stream shows, as the
+standard's auditor evidence computes it "over a sampled window". A window of steps
+5, 6, 7 is continuous; 5, 7 is missing step 6. The price is stated in the control:
+records before the first one of a sequence leave no gap, as records after the last
+one never did.
 
 ## The disclosure
 

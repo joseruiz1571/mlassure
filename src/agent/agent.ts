@@ -5,7 +5,7 @@ import { EvidenceStore } from "../store/evidence-store.js";
 import { buildToolDefs, SUBMIT_JUDGMENT_TOOL } from "../tools/registry.js";
 import { executeCollector, isKnownCollector } from "../tools/executor.js";
 import { buildSystemPrompt, buildInitialMessage, DEFAULT_WORDING } from "./prompts.js";
-import { validateCitations } from "../guard/citation-guard.js";
+import { validateCitations, UncitedVerdictError } from "../guard/citation-guard.js";
 import { parseJudgment } from "../guard/judgment-validator.js";
 import { findDeterministicCheck } from "./deterministic-checks.js";
 
@@ -240,7 +240,21 @@ export async function assessControl(
 
       if (block.name === "submit_judgment") {
         const judgment = parseJudgment(block.input, control.id);
-        validateCitations(judgment, store);
+        try {
+          validateCitations(judgment, store);
+        } catch (err) {
+          // M8c: an uncited conformance verdict goes back to the model, which
+          // can still collect and cite, or submit an honest verdict, inside
+          // the iteration cap. Every other guard failure (a phantom id)
+          // still ends the run, as before.
+          if (!(err instanceof UncitedVerdictError)) throw err;
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: block.id,
+            content: `Judgment refused: ${err.message}`,
+          });
+          continue;
+        }
         pendingJudgment = judgment;
         toolResults.push({
           type: "tool_result",

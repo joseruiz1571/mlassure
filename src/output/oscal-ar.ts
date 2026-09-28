@@ -33,11 +33,26 @@ function toObjectiveState(status: Judgment["status"]): "satisfied" | "not-satisf
 }
 
 /**
+ * A finding's remarks: the verdict remark below, plus (M8c) the control's
+ * `notAssessed` when it has one, so the limit sits in the field a generic
+ * OSCAL consumer shows, satisfied findings included. A control without
+ * `notAssessed` gets exactly the verdict remark, as before.
+ */
+function findingRemarks(status: Judgment["status"], notAssessed?: string): string | undefined {
+  const verdictRemarks = statusRemarks(status);
+  if (notAssessed === undefined) return verdictRemarks;
+  if (verdictRemarks === undefined) {
+    return `Satisfied for the evidence assessed only. Not assessed: ${notAssessed}`;
+  }
+  return `${verdictRemarks}\n\nNot assessed: ${notAssessed}`;
+}
+
+/**
  * When the binary OSCAL state diverges from mlassure's nuanced verdict, return
  * a human-readable remark making the real determination unmistakable in a field
  * every OSCAL renderer shows. `satisfied` judgments need no remark.
  */
-function findingRemarks(status: Judgment["status"]): string | undefined {
+function statusRemarks(status: Judgment["status"]): string | undefined {
   if (status === "satisfied") return undefined;
   if (status === "not-applicable") {
     return (
@@ -171,7 +186,7 @@ function buildFinding(
     }));
   }
 
-  const remarks = findingRemarks(j.status);
+  const remarks = findingRemarks(j.status, result.notAssessed);
   if (remarks) {
     finding.remarks = remarks;
   }
@@ -199,6 +214,10 @@ export function toOscalAssessmentResults(
   }
 
   const controlSetLabel = controlSet?.version ?? report.controlSetVersion;
+  // The report-wide evidence scope (M8c) goes where a consumer that reads only
+  // this file will see it: in the result's description, which every renderer
+  // shows, and again as remarks. Absent for a SageMaker report.
+  const scope = report.evidenceScope;
   const nowIso = new Date().toISOString();
 
   return {
@@ -224,8 +243,10 @@ export function toOscalAssessmentResults(
           title: `mlassure run ${report.runAt}`,
           description:
             `Agentic control assessment of ${report.targetName} ` +
-            `(${report.endpointName}) against control set ${controlSetLabel}.`,
+            `(${report.endpointName}) against control set ${controlSetLabel}.` +
+            (scope !== undefined ? ` ${scope}` : ""),
           start: report.runAt,
+          ...(scope !== undefined ? { remarks: scope } : {}),
           "reviewed-controls": {
             "control-selections": [
               {
