@@ -1420,7 +1420,7 @@ Clarification of V-11, not a new numbered check. `report.json` parse failures ot
 - [x] ISC-M9-5: SPEC §6.1 and `docs/proof-of-control.md` §2.1 / §5 describe CC-4 as Tier 3 time-anchoring, leave CC-2 at Tier 2, and do not say mlassure is Tier 3 or has Proof-of-Control. Tagged digests are named as not shipped. Falsifier: Read. — evidence: SPEC §6.1 and §8; crosswalk §2.1 CC-4 row and §5
 - [x] ISC-M9-6 (BUI-114): an unparseable `report.json` whose digest was recomputed is a V-11 violation with prefix `report.json cannot be parsed:`; nesting past 256 is that prefix plus `JSON nesting exceeds 256`, and the parser does not throw `RangeError`. Falsifier: the two new negative vectors and `strict-json.test.ts`. — evidence: generator self-check; vectors `unparseable-report`, `nested-report`; strict-json nesting test
 - [x] ISC-M9-7: full suite green, typecheck clean. Falsifier: `bun test`, `bun run typecheck`. — evidence: `bun test` 397 pass / 4 skip / 0 fail, 401 tests, 23 files; `tsc --noEmit` clean. The 4 skips are the two live Anthropic tests, the cosign chain, and the cosign presence gate
-- [x] ISC-M9-8: branch pushed, PR open against `main`, not merged, no tag. Falsifier: the PR URL. — evidence: filled when the PR is opened
+- [x] ISC-M9-8: branch pushed, PR open against `main`, not merged, no tag. Falsifier: the PR URL. — evidence: PR #9 (https://github.com/joseruiz1571/mlassure/pull/9), branch `cursor/m9-rekor-anchor-a4a8`; not merged, no tag
 
 ## Decisions (M9, 2026-10-06)
 
