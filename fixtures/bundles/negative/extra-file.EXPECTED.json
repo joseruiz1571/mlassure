@@ -1,5 +1,5 @@
 {
   "check": "V-12",
   "errorPattern": "^unaccounted file in bundle: \\.DS_Store",
-  "description": "A .DS_Store dropped into the bundle root. There is no junk-file allowlist — an allowlist is an attacker's hiding spot — so unaccounted content fails completeness no matter how ordinary its name looks. The only exemptions are the four signature-artifact names, exact-match."
+  "description": "A .DS_Store dropped into the bundle root. There is no junk-file allowlist — an allowlist is an attacker's hiding spot — so unaccounted content fails completeness no matter how ordinary its name looks. The only exemptions are the five signature-artifact names, exact-match (manifest.json, manifest.sig.bundle, manifest.json.sig, cosign.pub, rekor.json)."
 }

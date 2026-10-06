@@ -1,6 +1,6 @@
 # mlassure custody bundle — format specification
 
-**Format:** `bundleFormatVersion` `"1"` · **Status:** stable since milestone M3g (live-verified 2026-07-22, shipped in 0.3.0 on 2026-08-13); verification checks V-2, V-4, V-5 added in 0.5.0 without changing the written format · **Reference implementation:** `src/output/bundle.ts` (writer + verifier), `src/cli/index.ts` (`assess --bundle`, `verify-bundle`) · **Conformance vectors:** `fixtures/bundles/` · **License:** Apache-2.0
+**Format:** `bundleFormatVersion` `"1"` · **Status:** stable since milestone M3g (live-verified 2026-07-22, shipped in 0.3.0 on 2026-08-13); verification checks V-2, V-4, V-5 added in 0.5.0 without changing the written format; M9 adds the optional `rekor.json` time anchor (§6.1) and states that V-11 reports an unparseable `report.json`. Neither changes the manifest or `bundleFormatVersion`. · **Reference implementation:** `src/output/bundle.ts` (writer + verifier), `src/output/rekor.ts` (`--rekor`), `src/cli/index.ts` (`assess --bundle`, `verify-bundle`) · **Conformance vectors:** `fixtures/bundles/` · **License:** Apache-2.0
 
 This document is the custody bundle format on its own, separated from the tool that produces it, so that a second implementation can write or verify a bundle without reading mlassure's source. Where this document and the reference implementation disagree, that is a bug in one of them; file it.
 
@@ -37,7 +37,8 @@ A **custody bundle** is a directory that holds everything one assessment run pro
 ├── manifest.json             REQUIRED   written LAST; see §4
 ├── manifest.sig.bundle       EXEMPT     Cosign signature bundle (written after the manifest, by cosign)
 ├── manifest.json.sig         EXEMPT     alternative detached signature name
-└── cosign.pub                EXEMPT     the public key, when distributed with the bundle
+├── cosign.pub                EXEMPT     the public key, when distributed with the bundle
+└── rekor.json                EXEMPT     Rekor time anchor (written after the manifest; see §6.1). Not inspected unless `verify-bundle --rekor`
 ```
 
 Rules:
@@ -158,7 +159,7 @@ The checks, with the error-string prefix the reference verifier emits for each. 
 | ID | Check | Reference error prefix |
 | --- | --- | --- |
 | V-1 | the bundle directory exists and `manifest.json` exists in it *(terminal)* | `bundle directory does not exist:` · `no manifest.json in` |
-| V-2 | *(terminal)* `manifest.json` parses as JSON with **no duplicate object key** at any depth. Last-wins resolution is forbidden: one manifest must mean one thing to every reader. The same rule applies to `report.json` when it is read for V-11. | `manifest.json contains a duplicate object key` · `report.json contains a duplicate object key` · `manifest.json is not valid JSON` |
+| V-2 | *(terminal)* `manifest.json` parses as JSON with **no duplicate object key** at any depth. Last-wins resolution is forbidden: one manifest must mean one thing to every reader. The same duplicate-key rule applies to `report.json` when V-11 reads it. Any other failure to parse `report.json` is V-11, not this check. | `manifest.json contains a duplicate object key` · `report.json contains a duplicate object key` · `manifest.json is not valid JSON` |
 | V-3 | *(terminal)* manifest has `files` (array) and `rootHash` (string) | `manifest.json is missing "files" or "rootHash"` |
 | V-4 | `bundleFormatVersion` is one this verifier implements (`"1"`) | `unsupported bundleFormatVersion` |
 | V-5 | `algorithm` is present and is one this verifier implements (`"sha256"`); never assumed | `unrecognized digest algorithm` |
@@ -167,16 +168,17 @@ The checks, with the error-string prefix the reference verifier emits for each. 
 | V-8 | `files` lists `report.json` | `manifest does not list report.json` |
 | V-9 | every manifested file exists, is a regular readable file, its SHA-256 equals the entry's, and its byte length equals `bytes` | `missing file listed in manifest:` · `unreadable file listed in manifest:` · `hash mismatch:` · `size mismatch:` |
 | V-10 | `rootHash` equals the §4.1 recomputation over the manifest's own metadata and entries (skipped when any V-7 violation exists, since those already force failure) | `rootHash mismatch:` |
-| V-11 | manifest `targetName` and `controlSetVersion` equal the values inside the hash-covered `report.json` (an attacker who recomputes `rootHash` must also alter `report.json`, which V-9 then catches) | `manifest targetName … disagrees with report.json` · `manifest controlSetVersion … disagrees with report.json` |
-| V-12 | completeness of the directory: every regular file on disk is either manifested or one of the exempt signature artifacts by exact name (`manifest.json`, `manifest.sig.bundle`, `manifest.json.sig`, `cosign.pub`); no symlinks; no empty directories; no other filesystem entry kinds; no unreadable entries | `unaccounted file in bundle:` · `symlink inside bundle:` · `empty directory inside bundle:` · `unsupported filesystem entry inside bundle:` · `unreadable directory inside bundle:` · `unreadable entry inside bundle:` |
+| V-11 | manifest `targetName` and `controlSetVersion` equal the values inside the hash-covered `report.json` (an attacker who recomputes `rootHash` must also alter `report.json`, which V-9 then catches). Reading `report.json` for this check parses it with the strict parser. A duplicate key keeps the V-2 wording. **Any other reason the file cannot be parsed is a V-11 violation and is never skipped because the digest matched** — invalid JSON, a top-level value that is not an object, or nesting deeper than 256. A missing or unreadable `report.json` is V-8 or V-9, not also this prefix. | `manifest targetName … disagrees with report.json` · `manifest controlSetVersion … disagrees with report.json` · `report.json cannot be parsed:` |
+| V-12 | completeness of the directory: every regular file on disk is either manifested or one of the exempt signature artifacts by exact name (`manifest.json`, `manifest.sig.bundle`, `manifest.json.sig`, `cosign.pub`, `rekor.json`); no symlinks; no empty directories; no other filesystem entry kinds; no unreadable entries | `unaccounted file in bundle:` · `symlink inside bundle:` · `empty directory inside bundle:` · `unsupported filesystem entry inside bundle:` · `unreadable directory inside bundle:` · `unreadable entry inside bundle:` |
 
 Notes for implementers:
 
 - **Unicode normalization at verification.** The verifier NFC-normalizes both manifest entry paths and the names it reads from the filesystem before comparing them, before the completeness check, and before recomputing the root hash. A verifier that compares raw bytes diverges on NFD filesystems (macOS) for any non-ASCII path.
 - Verification MUST hash the bytes on disk. Re-serializing JSON to re-hash is wrong: key order and whitespace are not canonical in format 1, and the digest is over bytes.
 - Manifest entries are **untrusted input**. The writer only ever emits clean relative paths; an absolute path, `..`, or `\` in an entry is proof of tampering *and* an attempt to point verification outside the bundle. A verifier MUST reject such an entry before touching the filesystem with it.
-- There is no allowlist for "junk" files (`.DS_Store`, `Thumbs.db`). An allowlist is an attacker's hiding spot. The only exemptions are the four signature-artifact names, exact-match.
-- Malformed input (a manifest that is not an object, an entry that is a number, an unreadable file) is a custody **verdict** ("unverifiable"), never an exception out of the verifier.
+- There is no allowlist for "junk" files (`.DS_Store`, `Thumbs.db`). An allowlist is an attacker's hiding spot. The only exemptions are the five names in V-12, exact-match. `rekor.json` is exempt so a time anchor can sit beside the manifest; its bytes are checked only by `--rekor` (§6.1), the way the signature artifacts are checked only by Cosign.
+- Malformed input (a manifest that is not an object, an entry that is a number, an unreadable file, a `report.json` that does not parse) is a custody **verdict** ("unverifiable"), never an exception out of the verifier. The strict parser rejects nesting deeper than 256 with `JSON nesting exceeds 256` rather than overflowing its stack. The root value is depth 1.
+- V-11's unparseable-`report.json` case is a clarification of the check that already read the file (0.5.0 named only the duplicate-key failure). It is not a new numbered check. Vectors: `unparseable-report`, `nested-report`.
 
 ---
 
@@ -198,7 +200,73 @@ cosign verify-blob --bundle manifest.sig.bundle \
 
 `verify-bundle` does **not** check the signature and says so in its output. A complete verification is the format checks (§5) *and* a Cosign verification. A signature over a manifest that fails §5 proves only that someone signed a broken manifest.
 
-Who holds the signing key determines what the signature is worth. With an operator-held key pair, the signature attests that the operator produced these bytes: an outsider still trusts the operator's key custody. Keyless signing places the signing event in Rekor, Sigstore's public append-only transparency log, which any party can check without the operator's cooperation; that is the path toward evidence that does not rest on a single trusted party (see `docs/proof-of-control.md`, and roadmap milestone M9).
+Who holds the signing key determines what the signature is worth. With an operator-held key pair, the signature attests that the operator produced these bytes: an outsider still trusts the operator's key custody. Keyless signing places the signing event in Rekor, Sigstore's public append-only transparency log. Recording that log entry is §6.1. It is a time anchor for the manifest hash. It is not a claim that the bundle is Proof-of-Control, and it does not by itself say who controls the signing key (that remains the Cosign verification above).
+
+### 6.1 Time anchor: `rekor.json` and `verify-bundle --rekor`
+
+`rekor.json` is optional. A bundle without it verifies exactly as before. A bundle with it verifies under §5 without the flag; the flag is what checks the anchor. The reference command is:
+
+```bash
+mlassure verify-bundle <bundle> --rekor
+mlassure verify-bundle <bundle> --rekor --rekor-checkpoint <note> --rekor-key <pem>
+```
+
+`--rekor-checkpoint` replaces the checkpoint recorded in the file (a test supplies a forked log this way). `--rekor-key` names the log public key. When it is omitted and the checkpoint signer is `rekor.sigstore.dev`, the verifier uses `fixtures/rekor/rekor.sigstore.dev.pub.pem`, the public key fetched from `https://rekor.sigstore.dev/api/v1/log/publicKey` on 2026-10-06. Any other signer without `--rekor-key` is a failure: the verifier does not guess a trust anchor.
+
+The file is JSON with `kind` `"mlassure-rekor-anchor-v1"` and these members:
+
+| Member | Type | Meaning |
+| --- | --- | --- |
+| `logID` | 64 lowercase hex | SHA-256 of the log public key's SPKI DER. Rekor's log id. |
+| `logIndex` | safe integer ≥ 0 | The entry's log index, an input to the signed entry timestamp. On the public log this can be greater than `treeSize`. It is not the verdict. |
+| `treeIndex` | safe integer ≥ 0, `< treeSize` | The leaf's position in the tree of `treeSize` (Rekor's `inclusionProof.logIndex`). An input to the Merkle proof, not the verdict. |
+| `treeSize` | safe integer ≥ 1 | Tree size the inclusion proof and the checkpoint were taken at. |
+| `integratedTime` | safe integer ≥ 0 | Unix seconds. The log time T in claim CC-4. |
+| `identity` | `spki-sha256:<64 lowercase hex>` | SHA-256 of the SPKI DER of the key that signed the manifest hash. This version verifies hashedrekord entries, so the identity is that key, not an OIDC subject. |
+| `manifestSha256` | 64 lowercase hex | SHA-256 of the `manifest.json` bytes on disk. |
+| `canonicalBody` | base64 | The exact Rekor canonical body. The leaf preimage. |
+| `leafHash` | 64 lowercase hex | SHA-256(`0x00` \|\| decoded `canonicalBody`), RFC 6962. |
+| `hashes` | array of 64 lowercase hex | The audit path, leaf toward root. |
+| `rootHash` | 64 lowercase hex | The root the proof recomputes to. |
+| `signedEntryTimestamp` | base64 | ASN.1 ECDSA signature over the timestamp payload below. |
+| `checkpoint` | string | The signed-note checkpoint at `treeSize`, exact text. |
+
+The canonical body MUST be a Rekor `hashedrekord` entry (`kind` `"hashedrekord"`) whose `spec.data.hash` is `sha256` and `manifestSha256`, and whose `spec.signature` verifies over the manifest bytes under the public key named by `identity`. A keyless (certificate) entry is rejected by name; this version does not verify one.
+
+Leaf and node hashes are RFC 6962, as used by Rekor's Trillian log: leaf `SHA-256(0x00 || bytes)`, node `SHA-256(0x01 || left || right)`. The proof is consumed leaf-toward-root by the certificate-transparency iterative verifier. The recomputed root MUST equal both `rootHash` and the 32-byte root in the checkpoint. **The verifier compares those roots. It does not treat either index as success.** A checkpoint whose tree size differs is rejected, including a later and larger log head: this version does not check consistency proofs.
+
+The checkpoint is a signed note. Its body is three lines — origin, decimal tree size, standard-base64 root — including the trailing newline. The signature line is `— <signer> <base64>`, where the signature bytes are a 4-byte prefix (the first four bytes of SHA-256 of the log key's SPKI DER) followed by an ASN.1 ECDSA P-256 signature over the body. The signed entry timestamp is an ECDSA signature, with no prefix, over this exact JSON, keys in this order, no whitespace:
+
+```json
+{"body":"<canonicalBody>","integratedTime":<integratedTime>,"logID":"<logID>","logIndex":<logIndex>}
+```
+
+`verify-bundle` without `--rekor` does not read `rekor.json`. With `--rekor`, failures use these prefixes (a conforming implementation produces a violation matching the one that applies):
+
+| Situation | Prefix |
+| --- | --- |
+| file absent | `rekor.json is missing` |
+| file does not parse, including a duplicate key | `rekor.json cannot be parsed:` |
+| not this artifact | `rekor.json is not an mlassure Rekor anchor` |
+| manifest digest | `rekor manifest digest does not match manifest.json` |
+| leaf vs body | `rekor leaf hash does not match the canonical body` |
+| body is not hashedrekord | `rekor canonical body is not a hashedrekord entry` |
+| body hash | `rekor canonical body hash does not match manifestSha256` |
+| identity vs logged key | `rekor identity` |
+| artifact signature | `rekor artifact signature does not verify` |
+| proof shape | `rekor inclusion proof is not valid:` |
+| proof vs recorded root | `rekor inclusion proof does not recompute to the recorded root` |
+| checkpoint text | `rekor checkpoint cannot be parsed:` |
+| root mismatch | `rekor checkpoint root does not match inclusion root — the verifier compares roots, not log indexes` |
+| tree size mismatch | `rekor checkpoint tree size` |
+| unknown signer, no key supplied | `rekor checkpoint signer` |
+| log id vs key | `rekor logID` |
+| checkpoint signature | `rekor checkpoint signature did not verify` |
+| entry timestamp | `rekor signed entry timestamp did not verify` |
+
+These checks run only under `--rekor`, so they are not V-numbers and they are not in `fixtures/bundles/negative/`. A negative vector there is judged by `verify-bundle` without the flag; an anchor fault would not fail that command. The reference tests are `src/output/rekor.test.ts`. One of them re-verifies a real public-log entry, recorded in `fixtures/rekor/` (see that directory's README for the log index, what was submitted live, and what CI re-checks offline).
+
+Claim CC-4, and only CC-4, is what a successful `--rekor` supports: manifest hash H was logged under identity I at log time T. The command's own output says so, and says that this is not Proof-of-Control and not a Tier 3 custody claim. See `docs/proof-of-control.md`.
 
 ---
 
@@ -225,11 +293,15 @@ The reference implementation runs exactly this in `src/output/bundle.vectors.tes
 
 ## 8. Versioning
 
-`bundleFormatVersion` is a string. A verifier implements a fixed set of versions and refuses the rest (V-4). A change to the manifest members, the root-hash construction, the sort order, the exemption list, or the evidence-file shape is a new format version. Adding a *verification check* that rejects only what the format-1 writer never produced (as 0.5.0 did with V-2, V-4, V-5) is not a format change: every bundle written by an earlier format-1 writer still verifies.
+`bundleFormatVersion` is a string. A verifier implements a fixed set of versions and refuses the rest (V-4). A change to the manifest members, the root-hash construction, the sort order, or the evidence-file shape is a new format version. Adding a *verification check* that rejects only what the format-1 writer never produced (as 0.5.0 did with V-2, V-4, V-5, and as V-11's unparseable-`report.json` case does) is not a format change: every bundle written by an earlier format-1 writer still verifies.
+
+Widening the exemption list by one exact post-manifest name is also not a format version, when every previously valid bundle still verifies and the manifest is unchanged. M9 added `rekor.json` on that rule. The file is written after the manifest exists, so it cannot be a manifest member without changing the bytes the anchor commits to. A 0.5.0 verifier reports `rekor.json` as an unaccounted file (V-12); that is the older exemption list. Per-string tagged digests (`sha-256:<hex>` in place of the manifest's `algorithm` member and the bare hex digests) would change manifest members and the root-hash preimage. That would be format 2. It is not this specification.
 
 ## 9. References
 
 - Sigstore Cosign — `sign-blob` / `verify-blob`, bundle format
+- Sigstore Rekor — hashedrekord entries, signed tree head, signed entry timestamp; RFC 6962 Merkle proofs
+- RFC 6962 — Certificate Transparency, section 2.1 (Merkle audit proofs)
 - RFC 8785, JSON Canonicalization Scheme — cited for the string-escaping equivalence in §4.1 only; format 1 does not canonicalize whole documents
 - RFC 4122 — UUID textual form for evidence ids
 - LF Decentralized Trust, *Proof-of-Control* v1.0 draft, chapter C7.7 (the Interoperable Property) — the checks V-2, V-4, V-5 and the negative-vector discipline in §7 follow its requirements 7.7.3, 7.7.4, 7.7.5; the crosswalk is in `docs/proof-of-control.md`

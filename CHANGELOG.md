@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — M9 (Rekor time anchor, claim CC-4)
+
+- `rekor.json`, exempt from extra-file detection by exact name, records a Rekor hashedrekord inclusion proof: entry log index, proof index, tree size, audit path, signed entry timestamp, and the checkpoint at that tree size. It is not a manifest member. `bundleFormatVersion` stays `"1"`.
+- `verify-bundle --rekor` recomputes the RFC 6962 root and compares it to the checkpoint root. The log index is not the verdict. A later, larger log head is rejected (no consistency proof in this version). The checkpoint signature and the signed entry timestamp are checked under the log key. The default key is the Rekor public key vendored on 2026-10-06; `--rekor-key` and `--rekor-checkpoint` override it.
+- The check accepts hashedrekord entries only. The identity is `spki-sha256:` of the key that signed the manifest hash, not an OIDC subject. Keyless Fulcio signing is unchanged and still not performed by this command.
+- `fixtures/rekor/`: one public-log entry for the format-1 positive vector's manifest, submitted 2026-10-06, re-verified offline in tests. The signing private key was not kept.
+- Per-string tagged digests (`sha-256:<hex>`) were not adopted. That change would be format 2.
+
+### Fixed — BUI-114
+
+- `verify-bundle` reports `report.json cannot be parsed:` when `report.json` cannot be parsed for any reason other than a duplicate key (that case keeps the existing V-2 wording). A matching digest no longer skips the metadata check. Clarification of V-11, not a new numbered check, so the format version is unchanged.
+- The strict parser rejects nesting deeper than 256 with `JSON nesting exceeds 256` instead of overflowing the stack.
+- Negative vectors `unparseable-report` and `nested-report`.
+
 ### Changed — M8c (red-team follow-ups)
 
 - **Behavior change, both families:** a judgment of `satisfied` or `partially-satisfied` that cites no evidence is refused (`UncitedVerdictError`, from the shared citation guard). On the model path the refusal goes back to the model as the `submit_judgment` tool result and the loop continues inside the iteration cap, so the model can collect and cite or submit an honest verdict; a model that never recovers ends at the cap with the existing error. On the code path (`finalizeJudgment`) it throws. `not-satisfied`, `not-applicable` and `insufficient-evidence` may still cite nothing. A phantom citation still ends the run with `CitationError`, as before. No prompt changed.

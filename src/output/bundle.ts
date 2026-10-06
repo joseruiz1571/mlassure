@@ -18,6 +18,8 @@
  *                      manifest covers the files, the signature covers the
  *                      manifest); signature artifacts are the ONLY files
  *                      exempt from extra-file detection, by exact name
+ *   time anchor      — optional rekor.json (CC-4), checked only with --rekor;
+ *                      exempt by exact name, not a manifest member
  *   tamper-evidence  — any bit flip in any covered file fails verification
  *
  * What none of this proves: that the assessment methodology was sound.
@@ -41,6 +43,7 @@ import {
 import { join } from "node:path";
 import type { AssessmentReport } from "../runner/assessment-runner.js";
 import { parseJsonStrict, DuplicateKeyError } from "./strict-json.js";
+import { REKOR_FILENAME, verifyRekorAnchor, type RekorAnchor, type RekorVerifyOptions } from "./rekor.js";
 
 export const BUNDLE_FORMAT_VERSION = "1";
 export const MANIFEST_FILENAME = "manifest.json";
@@ -56,6 +59,9 @@ export const ALLOWED_UNMANIFESTED: readonly string[] = [
   "manifest.sig.bundle",
   "manifest.json.sig",
   "cosign.pub",
+  // Time anchor, written after the manifest the way the signature is.
+  // Not a manifest member — see rekor.ts.
+  REKOR_FILENAME,
 ];
 
 const UUID_RE =
@@ -218,11 +224,23 @@ export function writeEvidenceBundle(
   return manifest;
 }
 
+export type VerifyOptions = RekorVerifyOptions & {
+  /**
+   * Also check `rekor.json` (claim CC-4). Off by default: a bundle with no
+   * time anchor still verifies, and a present `rekor.json` is not inspected
+   * until this is set — same as the signature artifacts, which this command
+   * does not check either.
+   */
+  rekor?: boolean;
+};
+
 export type VerifyResult = {
   ok: boolean;
   checkedFiles: number;
   rootHash: string | null;
   errors: string[];
+  /** Set when `--rekor` was requested and the anchor verified. */
+  rekor?: RekorAnchor;
 };
 
 /**
@@ -308,7 +326,7 @@ function entryViolation(entry: unknown, index: number, seen: Set<string>): strin
   return null;
 }
 
-export function verifyEvidenceBundle(dir: string): VerifyResult {
+export function verifyEvidenceBundle(dir: string, opts: VerifyOptions = {}): VerifyResult {
   const errors: string[] = [];
 
   const manifestPath = join(dir, MANIFEST_FILENAME);
@@ -463,32 +481,52 @@ export function verifyEvidenceBundle(dir: string): VerifyResult {
     }
   }
 
-  // (b2) manifest metadata must agree with the hash-covered report.json —
-  // anchors targetName/controlSetVersion to covered CONTENT, so even a
-  // manifest whose rootHash was maliciously recomputed must also alter
-  // report.json (which check (a) then catches as a hash mismatch).
-  try {
-    const reportRaw = readFileSync(join(dir, "report.json"), "utf-8");
-    const report = parseJsonStrict(reportRaw) as { targetName?: unknown; controlSetVersion?: unknown };
-    if (report.targetName !== manifest.targetName) {
-      errors.push(
-        `manifest targetName "${manifest.targetName}" disagrees with report.json "${String(report.targetName)}"`
-      );
+  // (b2 / V-11) manifest metadata must agree with the hash-covered
+  // report.json — anchors targetName/controlSetVersion to covered CONTENT,
+  // so even a manifest whose rootHash was maliciously recomputed must also
+  // alter report.json (which check (a) then catches as a hash mismatch).
+  //
+  // A digest match does not mean the file parsed. Every parse failure is a
+  // violation (BUI-114): a duplicate key keeps the V-2 wording; anything
+  // else is `report.json cannot be parsed:`. A missing or unreadable file
+  // is V-8/V-9 and is not also reported here.
+  const reportPath = join(dir, "report.json");
+  if (existsSync(reportPath)) {
+    let reportRaw: string | undefined;
+    try {
+      reportRaw = readFileSync(reportPath, "utf-8");
+    } catch {
+      reportRaw = undefined;
     }
-    if (report.controlSetVersion !== manifest.controlSetVersion) {
-      errors.push(
-        `manifest controlSetVersion "${manifest.controlSetVersion}" disagrees with report.json "${String(report.controlSetVersion)}"`
-      );
-    }
-  } catch (err) {
-    // report.json missing/unreadable/unparseable is already reported by (a)
-    // or the report.json-presence check — don't double-report here. A
-    // DUPLICATE KEY is the one parse failure (a) cannot see (the bytes hash
-    // fine), so it is named here.
-    if (err instanceof DuplicateKeyError) {
-      errors.push(
-        `report.json contains a duplicate object key "${err.key}" at ${err.path} — one artifact must mean one thing to every reader`
-      );
+    if (reportRaw !== undefined) {
+      try {
+        const report = parseJsonStrict(reportRaw);
+        if (typeof report !== "object" || report === null || Array.isArray(report)) {
+          errors.push(`report.json cannot be parsed: top-level value is not an object`);
+        } else {
+          const fields = report as { targetName?: unknown; controlSetVersion?: unknown };
+          if (fields.targetName !== manifest.targetName) {
+            errors.push(
+              `manifest targetName "${manifest.targetName}" disagrees with report.json "${String(fields.targetName)}"`
+            );
+          }
+          if (fields.controlSetVersion !== manifest.controlSetVersion) {
+            errors.push(
+              `manifest controlSetVersion "${manifest.controlSetVersion}" disagrees with report.json "${String(fields.controlSetVersion)}"`
+            );
+          }
+        }
+      } catch (err) {
+        if (err instanceof DuplicateKeyError) {
+          errors.push(
+            `report.json contains a duplicate object key "${err.key}" at ${err.path} — one artifact must mean one thing to every reader`
+          );
+        } else {
+          errors.push(
+            `report.json cannot be parsed: ${err instanceof Error ? err.message : String(err)}`
+          );
+        }
+      }
     }
   }
 
@@ -501,10 +539,18 @@ export function verifyEvidenceBundle(dir: string): VerifyResult {
     }
   }
 
+  let rekor: RekorAnchor | undefined;
+  if (opts.rekor) {
+    const anchored = verifyRekorAnchor(dir, opts);
+    errors.push(...anchored.errors);
+    if (anchored.anchor !== undefined && anchored.errors.length === 0) rekor = anchored.anchor;
+  }
+
   return {
     ok: errors.length === 0,
     checkedFiles: checked,
     rootHash: manifest.rootHash,
     errors,
+    ...(rekor !== undefined ? { rekor } : {}),
   };
 }

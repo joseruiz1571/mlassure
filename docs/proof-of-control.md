@@ -1,10 +1,10 @@
 # mlassure and Proof-of-Control: a requirement-level crosswalk
 
 **Standard:** LF Decentralized Trust / Advanced AI Society, *Proof-of-Control* — launched 2026-09-23 (event); analysed against repository `LFDT-ProofOfControl/ov-poc-standard` at commit `22c7b62` (2026-09-18), whose header reads "Working Draft v0.1.4", chapters under `0.1/en/`, 127 requirements; public comment open through 2026-10-30. Requirement IDs below use the repository's `C7.7.3` form.
-**Subject:** the mlassure custody bundle, format 1, as specified in [`SPEC.md`](../SPEC.md), produced by mlassure 0.5.0.
-**Date of this analysis:** 2026-09-25. **Stage:** Self-Declared (C10.1.1). **Author:** the maintainer.
+**Subject:** the mlassure custody bundle, format 1, as specified in [`SPEC.md`](../SPEC.md). The grades below were taken against mlassure 0.5.0 on 2026-09-25. The 2026-10-06 update records what M9 shipped: claim CC-4 and `verify-bundle --rekor`. Format version is still `"1"`.
+**Date of this analysis:** 2026-09-25, updated 2026-10-06. **Stage:** Self-Declared (C10.1.1). **Author:** the maintainer.
 
-> **The one-line result.** mlassure's custody bundle is **Tier 2 (Attestation)** evidence under C8: it is hash-committed and, when the operator signs the manifest, signed; anyone can re-verify the bytes, but a single party — the operator who ran the assessment and holds the signing key — must be trusted for the evidence to mean anything. It is not Proof-of-Control, and this document does not claim that it is. The interoperability requirements in C7.7 are where the format now stands closest to the standard, and there is a concrete path to a Tier 3 *time-anchoring* claim (§5) — not to a Tier 3 custody claim under the standard's current text.
+> **The one-line result.** mlassure's custody bundle is **Tier 2 (Attestation)** evidence under C8: it is hash-committed and, when the operator signs the manifest, signed; anyone can re-verify the bytes, but a single party — the operator who ran the assessment and holds the signing key — must be trusted for the evidence to mean anything. It is not Proof-of-Control, and this document does not claim that it is. M9 adds a separate claim, CC-4, at Tier 3 for *time-anchoring only* (§5): a manifest hash was logged. That does not move CC-2, and it does not make mlassure Tier 3.
 
 ---
 
@@ -32,11 +32,12 @@ So the crosswalk has a narrow, stated scope (C10.1.6):
 
 | # | Claim | Evidence stream | Mechanism | Parties that must be trusted | Tier |
 | --- | --- | --- | --- | --- | --- |
-| CC-1 | The files in a bundle are byte-identical to what the writer produced. (The `createdAt` time is asserted, not anchored — Tier 1 for the temporal clause until 7.2.2 is met.) | `manifest.json` | per-file SHA-256; root hash over metadata + sorted (path, digest) pairs; strict completeness check | SHA-256 (mathematical); the verifier implementation | **2** — verifiable by anyone, but *which* bytes were produced is asserted by the operator (CC-2) |
+| CC-1 | The files in a bundle are byte-identical to what the writer produced. (`createdAt` is still an assertion. The anchored time, when there is one, is CC-4's log time, not `createdAt`.) | `manifest.json` | per-file SHA-256; root hash over metadata + sorted (path, digest) pairs; strict completeness check | SHA-256 (mathematical); the verifier implementation | **2** — verifiable by anyone, but *which* bytes were produced is asserted by the operator (CC-2) |
 | CC-2 | The manifest was produced by a named signer and not altered since. | `manifest.sig.bundle` | Cosign `sign-blob` over `manifest.json` | key-pair mode: the operator's key custody. Keyless mode: the OIDC identity provider, Fulcio CA, Rekor transparency log | **2** — a single party (the operator as signer) is trusted; C8.1.3 caps this at Tier 2 |
 | CC-3 | The bundle contains *every* evidence item the assessor retrieved, cited or not. | `evidence/*.json`, `report.json` | writer bundles all `retrievedEvidence`; manifest completeness | the writer implementation; the operator not to have run a modified writer | **1** — the operator's word that the binary was unmodified, unless the run is itself attested |
+| CC-4 | Manifest hash H was logged under identity I at log time T. Made only when `verify-bundle --rekor` succeeds. | `rekor.json` | RFC 6962 inclusion proof compared to the checkpoint root, not the log index; checkpoint note and signed entry timestamp under the log key; hashedrekord body binds H and the signing key | the Rekor operator, and monitors independent of it (unverified; see 8.1.6) | **3** (Distributed · Vendor), for this claim alone. A test-key fixture is not this claim. mlassure is not Tier 3. |
 
-C8.1.2's rule — *any single trusted party caps the claim at Tier 2* — decides the placement. Nothing here is Proof-of-Control (C8.1.4), and the standard's own worked example says why: *"A signed operator log is Tier 2."*
+C8.1.2's rule — *any single trusted party caps the claim at Tier 2* — decides the placement of CC-1 and CC-2. Nothing here is Proof-of-Control (C8.1.4), and the standard's own worked example says why: *"A signed operator log is Tier 2."* CC-4 is a separate Tier 3 claim about a log entry. It does not lift CC-1, CC-2, or CC-3, and a bundle is not Tier 3 because one of its claims is.
 
 ### 2.2 Trust-assumption disclosure (C7.4.1, C10.2.1, C10.2.2)
 
@@ -50,6 +51,8 @@ Categories from the C10.2.2 draft set: Hardware · Mathematical · Ceremony · V
 | The OIDC provider honestly attests the signer's identity (keyless mode) | e.g. GitHub Actions OIDC, Google | Vendor | CC-2 |
 | Fulcio issues certificates only to authenticated identities; Rekor is append-only and independently monitored (keyless mode) | Sigstore public-good instance | Vendor · Distributed | CC-2 |
 | The Cosign and mlassure binaries a verifier runs are the published ones | sigstore/cosign, this repository, Bun | Implementation | CC-1, CC-2 |
+| Rekor's log key signs checkpoints and entry timestamps honestly, and the vendored copy in `fixtures/rekor/rekor.sigstore.dev.pub.pem` is that key (fetched 2026-10-06) | Rekor public-good instance | Vendor · Distributed | CC-4 |
+| The hashedrekord identity is the signing public key. This is not an OIDC subject, and Fulcio is not in the check | the key that signed the manifest hash | Implementation | CC-4 |
 | The operator ran an unmodified writer against the target it names, at the time it says | operator | Implementation | CC-3 |
 | The evidence payloads are what the provider returned (fixture provider today; a live AWS provider would add AWS API honesty as a Vendor assumption) | provider | Vendor / Implementation | CC-3 |
 
@@ -76,7 +79,7 @@ Status vocabulary: **met** · **partial** · **not met** · **n/a** (out of scop
 | Req | L | Status | mlassure |
 | --- | --- | --- | --- |
 | 7.2.1 | 1 | partial | Each evidence item carries `retrievedAt` stamped at retrieval, inside the run; the *bundle* is written at run end, which is batch-at-close, not per-event durability. |
-| 7.2.2 | 3 | not met | No external time anchor. Keyless Cosign puts the signing event in Rekor with an inclusion proof and a log timestamp; recording that proof in the bundle is milestone M9. |
+| 7.2.2 | 3 | partial | `rekor.json` plus `verify-bundle --rekor` re-checks an inclusion proof, the checkpoint signature, and the signed entry timestamp (`SPEC.md` §6.1). One manifest — the format-1 positive conformance vector — was entered in the public Rekor log on 2026-10-06 (`fixtures/rekor/`). The writer does not submit to Rekor itself, the recorded identity is a signing public key rather than an OIDC subject, and a later log head is not checked (no consistency proof). |
 | 7.2.3, 7.2.4 | 3 | n/a | No hardware attestation is used or claimed. |
 
 ### C7.3 Tamper-evident
@@ -111,7 +114,7 @@ Status vocabulary: **met** · **partial** · **not met** · **n/a** (out of scop
 | 7.6.3 | 4 | n/a | Not a gateway; there is no in-scope action to refuse. |
 | 7.6.4 | 2 | not met | Bundles are directories; access control and read logging are whatever the filesystem or object store provides. `SECURITY.md` says to treat a bundle like the account it describes. |
 | 7.6.5 | 1 | not met | No retention statement. |
-| 7.6.6 | 3 | not met | No external anchoring of the root; see 7.2.2 and M9. |
+| 7.6.6 | 3 | partial | The manifest hash can be anchored in Rekor and re-checked against the checkpoint root. See 7.2.2. The anchor is opt-in (`--rekor`) and is not produced by `assess --bundle`. |
 
 ### C7.7 Interoperable
 
@@ -119,7 +122,7 @@ Status vocabulary: **met** · **partial** · **not met** · **n/a** (out of scop
 | --- | --- | --- | --- |
 | 7.7.1 | 2 | **met** | `SPEC.md` §4 documents every field; `fixtures/schemas/bundle-manifest.schema.json` is the machine-readable schema; the writer's own output is validated against it in the test suite. |
 | 7.7.2 | 2 | partial | Exactly which bytes each digest covers is stated (`SPEC.md` §4.1: per-file digests over bytes on disk; the root hash over a fully specified compact array encoding with a stated sort order; the signature over the manifest bytes as written). The manifest *document* itself has no canonical serialization — two conforming writers would produce the same `rootHash` but not the same manifest bytes. Absent-field semantics do not arise (no optional members). |
-| 7.7.3 | 2 | **met** (0.5.0) | The manifest carries a mandatory `algorithm` identifier that governs every digest in it; a verifier that meets a manifest without one, or with one it does not implement, refuses rather than assumes (check V-5). Design note: the identifier is per-manifest, not a per-string `sha-256:` prefix as in the standard's own claim set; a future format could adopt the tagged form. |
+| 7.7.3 | 2 | **met** (0.5.0) | The manifest carries a mandatory `algorithm` identifier that governs every digest in it; a verifier that meets a manifest without one, or with one it does not implement, refuses rather than assumes (check V-5). The per-string `sha-256:<hex>` form was not adopted in M9. It would change every digest and the root-hash preimage (format 2). Format 1 still uses the document-level identifier. |
 | 7.7.4 | 3 | **met** (0.5.0) | `fixtures/bundles/` holds positive and negative vectors; each negative carries the single check it exercises and its expected error pattern; the suite fails a negative that is rejected for any other reason (`SPEC.md` §7). |
 | 7.7.5 | 2 | **met** (0.5.0) | `verify-bundle` parses `manifest.json` and `report.json` with a strict parser that rejects duplicate keys at any depth, naming the key and path (check V-2). `JSON.parse`'s last-wins behaviour was the prior state. |
 
@@ -127,12 +130,12 @@ Status vocabulary: **met** · **partial** · **not met** · **n/a** (out of scop
 
 | Req | L | Status | mlassure |
 | --- | --- | --- | --- |
-| 8.1.1–8.1.3 | 1 | **met** | §2.1: three claims, each with a trust analysis and a Tier; the single-party rule applied. |
+| 8.1.1–8.1.3 | 1 | **met** | §2.1: four claims, each with a trust analysis and a Tier. The single-party rule caps CC-1 and CC-2 at Tier 2. CC-4 is Tier 3 and does not lift the others. |
 | 8.1.4 | 1 | partial | The phrase appears only as analysis, cross-reference, or explicit non-claim (§1); but 8.1.4 also asks for a *documented claims review* confirming that, and none exists (single maintainer; see 7.5.2). |
-| 8.1.5 | 3 | n/a | Scoped to Tier 3+ claims; none is registered. Would be met by: a recorded verification run of a published bundle by a party holding no operator credentials (M9 item 3). |
-| 8.1.6 | 1 | n/a | No Tier 3 claim registered. §5 places the prospective Rekor-anchored claim at Tier 3, not Tier 4, in line with this requirement. |
-| 8.1.7 | 3 | partial | Keyless mode rests on a vendor-rooted service (Sigstore); §5 composes it with Rekor's public log before any Tier 3 placement, and the vendor assumption is on the disclosure. |
-| 8.1.8 | 3 | n/a | Scoped to Tier 3+ claims; none is registered. The tooling already satisfies the condition — `verify-bundle` and Cosign are public, versioned, Apache-2.0, credential-free — so this would be met the day a Tier 3 claim is registered. |
+| 8.1.5 | 3 | partial | CI re-verifies the recorded public-log inclusion with no API key and no maintainer credential (`src/output/rekor.test.ts`, `fixtures/rekor/`). That is a credential-free re-run of an entry this repository submitted. It is not a second party's recorded run of a live keyless signing. Left open. |
+| 8.1.6 | 1 | partial | CC-4 is placed at Tier 3, not Tier 4, because independent monitors of the public-good instance were not verified. |
+| 8.1.7 | 3 | partial | Keyless mode rests on a vendor-rooted service (Sigstore). CC-4 is the composition with Rekor's public log, and the vendor assumption is on the disclosure. The shipped check is hashedrekord (a public key), not the Fulcio/OIDC path. |
+| 8.1.8 | 3 | partial | `verify-bundle --rekor` is public, versioned, Apache-2.0, and credential-free, and the recorded entry can be re-checked from a clone. A release bundle produced by `assess --bundle` does not yet carry an anchor of its own. |
 
 ### C10 Conformance and disclosure
 
@@ -159,24 +162,20 @@ Three of mlassure's oldest decisions are the standard's own positions, arrived a
 
 ---
 
-## 5. The path from Tier 2 to a Tier 3 custody claim (milestone M9)
+## 5. Tier 3 time-anchoring (milestone M9, claim CC-4)
 
-C8.1.6 and the C8 worked examples place *"a public, append-only transparency log with independent monitors"* at Tier 3 — verifiable by anyone, after the fact, not gating operation. Keyless Cosign already does this: `sign-blob` without a key obtains a short-lived certificate from Fulcio bound to an OIDC identity and records the signature in Rekor, which returns an inclusion proof and a signed log timestamp.
+C8.1.6 and the C8 worked examples place *"a public, append-only transparency log with independent monitors"* at Tier 3 — verifiable by anyone, after the fact, not gating operation. M9 registers that as **CC-4** in §2.1, a new claim. It does not promote CC-2.
 
-What M9 adds to the format (as format 2, since the manifest members change):
+What shipped, in format 1 (the manifest members did not change; `rekor.json` is a post-manifest file, exempt by exact name, the way the signature artifacts are):
 
-1. **Record the Rekor inclusion proof in the bundle** (`rekor.json`: log index, tree size, inclusion proof, signed entry timestamp), exempt from extra-file detection by exact name like the other signature artifacts. This is the external anchor for 7.2.2 and 7.6.6.
-2. **`verify-bundle --rekor`**: re-verify the inclusion proof against Rekor's published checkpoint, and compare the *root*, not the index (the standard's own 7.3.5 lesson).
-3. **Recorded independent verification run** (8.1.5): a CI job on a second identity, or a stranger's recorded run, verifying a published bundle with no maintainer credentials.
-4. **Adopt tagged digests** (`sha-256:<hex>`) per string, aligning 7.7.3 with the standard's claim set.
+1. **`rekor.json`** records the log index, the proof's tree index, the tree size, the inclusion proof, the signed entry timestamp, and the checkpoint. `SPEC.md` §6.1.
+2. **`verify-bundle --rekor`** recomputes the RFC 6962 root and compares it to the checkpoint root. The log index is an input, not the verdict (the 7.3.5 lesson: two trees can share an index). A later, larger log head is rejected; consistency proofs are not implemented. The checkpoint signature and the signed entry timestamp are both checked under the log key.
+3. **A recorded public-log entry** for the format-1 positive vector's manifest hash, made once on 2026-10-06 and re-verified in CI with no credential (`fixtures/rekor/`). The identity on that entry is the signing public key (`spki-sha256:…`), not an OIDC subject. Keyless Fulcio signing is not what was logged.
+4. **Tagged digests were not adopted.** `sha-256:<hex>` on every digest string would change the manifest and the root-hash preimage. That is format 2, and it was left for a later change that can carry vectors and a SPEC update together.
 
-**What this registers, honestly.** M9 adds a *new* claim, not a promotion of CC-2:
+CC-2 — *who* produced the manifest — stays **Tier 2** under the current C8 text: in keyless mode the identity half rests on a certificate authority (Fulcio) plus an OIDC provider, and C8 places "a certificate you can only believe by trusting a certificate authority" below the line. It would move only if the working group ratifies the reformulation under discussion in C8's own `[WG-INPUT]` block and Appendix D issue 6. This document does not pre-empt that decision. What M9 does not fix: 7.3.2 (the operator still chooses to sign) and CC-3 (Tier 1 until the run itself is attested, which is out of mlassure's scope). 8.1.5 is partial: CI re-runs the recorded inclusion without a maintainer credential; a second party's run of a live keyless signing is still open.
 
-| # | Claim | Mechanism | Parties that must be trusted | Tier |
-| --- | --- | --- | --- | --- |
-| CC-4 | Manifest hash *H* was logged under identity *I* at log time *T*. | Rekor inclusion proof + signed entry timestamp | the Rekor operator, and monitors independent of it (8.1.6 requires them; whether the public-good instance's monitors are operator-independent is **unverified** here) | **3** (Distributed · Vendor) |
-
-CC-2 — *who* produced the manifest — stays **Tier 2** under the current C8 text: in keyless mode the identity half rests on a certificate authority (Fulcio) plus an OIDC provider, and C8 places "a certificate you can only believe by trusting a certificate authority" below the line. It would move only if the working group ratifies the reformulation under discussion in C8's own `[WG-INPUT]` block and Appendix D issue 6 — the Tier 2/3 test restated as *who selects the trusted party, and whether their dishonesty is publicly detectable* — under which CT-logged certificate issuance might qualify. This document does not pre-empt that decision. What M9 does *not* fix at all: 7.3.2 (the operator still chooses to sign) and CC-3 (Tier 1 until the run itself is attested, which is out of mlassure's scope).
+The success line of `verify-bundle --rekor` states CC-4 and states that the result is not Proof-of-Control and not a Tier 3 custody claim.
 
 ---
 
