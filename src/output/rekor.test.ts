@@ -6,7 +6,7 @@
  *     No maintainer credential is used. The signing private key was discarded.
  */
 import { describe, it, expect, afterAll } from "bun:test";
-import { createHash, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
+import { createHash, generateKeyPairSync, sign, X509Certificate, type KeyObject } from "node:crypto";
 import { mkdtempSync, cpSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,6 +22,7 @@ import {
   type RekorArtifact,
 } from "./rekor.js";
 import { verifyEvidenceBundle } from "./bundle.js";
+import { VENDORED_REKOR_PUBLIC_KEY } from "./rekor-key.js";
 
 const repoRoot = join(import.meta.dir, "../..");
 const POSITIVE = join(repoRoot, "fixtures/bundles/positive/fraud-detection-v2-clean");
@@ -47,6 +48,43 @@ type Keys = { publicPem: string; privateKey: KeyObject };
 function keypair(): Keys {
   const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   return { publicPem: publicKey.export({ type: "spki", format: "pem" }).toString(), privateKey };
+}
+
+function flipSignature(b64: string): string {
+  const bytes = Buffer.from(b64, "base64");
+  bytes[bytes.length - 1] = bytes[bytes.length - 1]! ^ 1;
+  return bytes.toString("base64");
+}
+
+/** A real self-signed certificate for an ephemeral test key; no openssl dependency. */
+function certificate(keys: Keys): string {
+  const tlv = (tag: number, data: Buffer): Buffer => {
+    const length = data.length < 128 ? [data.length] : data.length < 256
+      ? [0x81, data.length] : [0x82, data.length >> 8, data.length & 255];
+    return Buffer.concat([Buffer.from([tag, ...length]), data]);
+  };
+  const seq = (...values: Buffer[]) => tlv(0x30, Buffer.concat(values));
+  const sigAlg = seq(Buffer.from("06082a8648ce3d040302", "hex")); // ecdsa-with-SHA256
+  const name = seq(tlv(0x31, seq(Buffer.from("0603550403", "hex"), tlv(0x0c, Buffer.from("untrusted-test-only")))));
+  const validity = seq(tlv(0x17, Buffer.from("260101000000Z")), tlv(0x17, Buffer.from("350101000000Z")));
+  const spki = Buffer.from(keys.publicPem.replace(/-----[^-]+-----|\s/g, ""), "base64");
+  const tbs = seq(Buffer.from("020101", "hex"), sigAlg, name, validity, name, spki);
+  const der = seq(tbs, sigAlg, tlv(0x03, Buffer.concat([Buffer.from([0]), sign("sha256", tbs, keys.privateKey)])));
+  const pem = `-----BEGIN CERTIFICATE-----\n${der.toString("base64").match(/.{1,64}/g)!.join("\n")}\n-----END CERTIFICATE-----\n`;
+  expect(new X509Certificate(pem).verify(new X509Certificate(pem).publicKey)).toBe(true);
+  return pem;
+}
+
+/** Re-sign the log layers after changing the body, isolating body validation. */
+function relog(art: RekorArtifact, body: Buffer, log: Keys): void {
+  art.canonicalBody = body.toString("base64");
+  art.leafHash = leafHash(body).toString("hex");
+  art.rootHash = art.leafHash;
+  art.treeIndex = 0;
+  art.treeSize = 1;
+  art.hashes = [];
+  art.checkpoint = signCheckpointNote(checkpointBody("test-log.example", 1, Buffer.from(art.rootHash, "hex")), log.privateKey, "test-log.example");
+  art.signedEntryTimestamp = signEntryTimestamp(entryTimestampPayload(art.canonicalBody, art.integratedTime, art.logID, art.logIndex), log.privateKey);
 }
 
 function syntheticAnchor(dir: string, log: Keys, signer: Keys): RekorArtifact {
@@ -107,6 +145,171 @@ describe("verify-bundle --rekor (synthetic log)", () => {
   }
 
   const opts = { rekor: true as const, rekorPublicKeyPem: log.publicPem };
+
+  function save(dir: string, art: RekorArtifact): void {
+    writeFileSync(join(dir, "rekor.json"), JSON.stringify(art));
+  }
+
+  function rejectOnly(dir: string, art: RekorArtifact, reason: string, cli = false): void {
+    save(dir, art);
+    const r = verifyEvidenceBundle(dir, opts);
+    expect(r.ok).toBe(false);
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0]).toStartWith(reason);
+    expect(r.rekor).toBeUndefined();
+    if (cli) {
+      const keyPath = join(root, "log.pub");
+      writeFileSync(keyPath, log.publicPem);
+      const proc = Bun.spawnSync(["bun", "src/cli/index.ts", "verify-bundle", dir, "--rekor", "--rekor-key", keyPath], { cwd: repoRoot });
+      expect(proc.exitCode).toBe(1);
+      expect(proc.stderr.toString()).toContain(reason);
+      expect(proc.stdout.toString()).not.toContain("verify-bundle: OK");
+    }
+  }
+
+  it("rejects only a bad checkpoint signature, with all roots and the SET valid", () => {
+    const { dir, art } = anchored();
+    art.checkpoint = art.checkpoint.replace(/([^ ]+)\n$/, (_, b64: string) => `${flipSignature(b64)}\n`);
+    rejectOnly(dir, art, "rekor checkpoint signature did not verify", true);
+  });
+
+  it("rejects only a bad SET signature, with the inclusion and checkpoint valid", () => {
+    const { dir, art } = anchored();
+    art.signedEntryTimestamp = flipSignature(art.signedEntryTimestamp);
+    rejectOnly(dir, art, "rekor signed entry timestamp did not verify", true);
+  });
+
+  it("rejects only a bad artifact signature, even when the log signed its body", () => {
+    const { dir, art } = anchored();
+    const body = JSON.parse(Buffer.from(art.canonicalBody, "base64").toString());
+    body.spec.signature.content = flipSignature(body.spec.signature.content);
+    relog(art, Buffer.from(JSON.stringify(body)), log);
+    rejectOnly(dir, art, "rekor artifact signature does not verify", true);
+  });
+
+  it("rejects only an identity mismatch, with all three signatures valid", () => {
+    const { dir, art } = anchored();
+    art.identity = `spki-sha256:${"00".repeat(32)}`;
+    rejectOnly(dir, art, "rekor identity", true);
+  });
+
+  for (const value of [null, [], true, 7, "text"]) {
+    it(`rejects a non-object canonical body: ${JSON.stringify(value)}`, () => {
+      const { dir, art } = anchored();
+      relog(art, Buffer.from(JSON.stringify(value)), log);
+      rejectOnly(dir, art, "rekor canonical body must be a JSON object");
+    });
+  }
+
+  it("rejects a hashedrekord certificate despite valid artifact and log signatures", () => {
+    const { dir, art } = anchored();
+    const body = JSON.parse(Buffer.from(art.canonicalBody, "base64").toString());
+    body.spec.signature.publicKey.content = Buffer.from(certificate(signer)).toString("base64");
+    relog(art, Buffer.from(JSON.stringify(body)), log);
+    rejectOnly(dir, art, "rekor logged public key or artifact signature is not usable: expected a bare SPKI PUBLIC KEY PEM");
+  });
+
+  it("rejects a private key where a public key is required", () => {
+    const { dir, art } = anchored();
+    const body = JSON.parse(Buffer.from(art.canonicalBody, "base64").toString());
+    body.spec.signature.publicKey.content = Buffer.from(signer.privateKey.export({ format: "pem", type: "pkcs8" })).toString("base64");
+    relog(art, Buffer.from(JSON.stringify(body)), log);
+    rejectOnly(dir, art, "rekor logged public key or artifact signature is not usable: expected a bare SPKI PUBLIC KEY PEM");
+  });
+
+  it("rejects an unsupported hashedrekord version", () => {
+    const { dir, art } = anchored();
+    const body = JSON.parse(Buffer.from(art.canonicalBody, "base64").toString());
+    body.apiVersion = "99";
+    relog(art, Buffer.from(JSON.stringify(body)), log);
+    rejectOnly(dir, art, "rekor hashedrekord apiVersion must be");
+  });
+
+  it("rejects invalid UTF-8 in a log-signed body without replacing bytes", () => {
+    const { dir, art } = anchored();
+    relog(art, Buffer.concat([Buffer.from('{"x":"'), Buffer.from([255]), Buffer.from('"}')]), log);
+    rejectOnly(dir, art, "rekor canonical body cannot be parsed: invalid UTF-8");
+  });
+
+  it("rejects noncanonical base64 in the SET", () => {
+    const { dir, art } = anchored();
+    art.signedEntryTimestamp += "!!!!";
+    rejectOnly(dir, art, "rekor signed entry timestamp did not verify");
+  });
+
+  it("rejects noncanonical base64 in the canonical body", () => {
+    const { dir, art } = anchored();
+    art.canonicalBody += "!!!!";
+    rejectOnly(dir, art, "rekor canonical body is not base64");
+  });
+
+  it("rejects a signed time the CLI cannot represent", () => {
+    const { dir, art } = anchored();
+    art.integratedTime = 8_640_000_000_001;
+    art.signedEntryTimestamp = signEntryTimestamp(entryTimestampPayload(art.canonicalBody, art.integratedTime, art.logID, art.logIndex), log.privateKey);
+    rejectOnly(dir, art, "rekor.json integratedTime must be", true);
+  });
+
+  it("attributes a custom key to its fingerprint even with a forged public-log label", () => {
+    const { dir, art } = anchored();
+    art.checkpoint = art.checkpoint.replace("— test-log.example ", "— rekor.sigstore.dev ");
+    save(dir, art);
+    const r = verifyEvidenceBundle(dir, opts);
+    expect(r.errors).toEqual([]);
+    expect(r.rekor?.trustSource).toBe("custom");
+    expect(r.rekor?.logID).toBe(spkiSha256(log.publicPem));
+    expect(verifyEvidenceBundle(dir, { rekor: true }).ok).toBe(false);
+    const keyPath = join(root, "custom.pub");
+    writeFileSync(keyPath, log.publicPem);
+    const proc = Bun.spawnSync(["bun", "src/cli/index.ts", "verify-bundle", dir, "--rekor", "--rekor-key", keyPath], { cwd: repoRoot });
+    expect(proc.exitCode).toBe(0);
+    expect(proc.stdout.toString()).toContain(`custom trust anchor spki-sha256:${art.logID}`);
+    expect(proc.stdout.toString()).not.toContain("verified with rekor.sigstore.dev");
+  });
+
+  for (const field of ["integratedTime", "logIndex"] as const) {
+    it(`rejects tampered ${field} through the SET alone`, () => {
+      const { dir, art } = anchored();
+      art[field] += 1;
+      rejectOnly(dir, art, "rekor signed entry timestamp did not verify");
+    });
+  }
+
+  it("requires the documented P-256 log key profile", () => {
+    const dir = copyPositive();
+    const other = generateKeyPairSync("ec", { namedCurve: "secp384r1" });
+    const key = { privateKey: other.privateKey, publicPem: other.publicKey.export({ type: "spki", format: "pem" }).toString() };
+    save(dir, syntheticAnchor(dir, key, signer));
+    const r = verifyEvidenceBundle(dir, { rekor: true, rekorPublicKeyPem: key.publicPem });
+    expect(r.errors).toEqual(["rekor log public key is not usable: log key must be ECDSA P-256"]);
+    expect(r.rekor).toBeUndefined();
+  });
+
+  it("does not establish global consistency: coherent signed forks each verify locally", () => {
+    const { dir, art } = anchored();
+    const first = verifyEvidenceBundle(dir, opts);
+    const leaves = [leafHash(Buffer.from("fork")), Buffer.from(art.leafHash, "hex"), leafHash(Buffer.from("other-2")), leafHash(Buffer.from("other-3"))];
+    art.rootHash = merkleRoot(leaves).toString("hex");
+    art.hashes = inclusionProof(leaves, 1).map((h) => h.toString("hex"));
+    art.checkpoint = signCheckpointNote(checkpointBody("test-log.example", 4, Buffer.from(art.rootHash, "hex")), log.privateKey, "test-log.example");
+    save(dir, art);
+    const fork = verifyEvidenceBundle(dir, opts);
+    expect(first.errors).toEqual([]);
+    expect(fork.errors).toEqual([]);
+    expect(fork.rekor?.rootHash).not.toBe(first.rekor?.rootHash);
+  });
+
+  it("trusts the log's stated time: a re-signed SET changes time without changing the leaf", () => {
+    const { dir, art } = anchored();
+    const originalRoot = art.rootHash;
+    art.integratedTime += 3600;
+    art.signedEntryTimestamp = signEntryTimestamp(entryTimestampPayload(art.canonicalBody, art.integratedTime, art.logID, art.logIndex), log.privateKey);
+    save(dir, art);
+    const r = verifyEvidenceBundle(dir, opts);
+    expect(r.errors).toEqual([]);
+    expect(r.rekor?.rootHash).toBe(originalRoot);
+    expect(r.rekor?.integratedTime).toBe(art.integratedTime);
+  });
 
   it("accepts a proof whose recomputed root is the signed checkpoint root", () => {
     const { dir, art } = anchored();
@@ -181,6 +384,23 @@ describe("verify-bundle --rekor (synthetic log)", () => {
 });
 
 describe("verify-bundle --rekor (public Rekor entry, recorded 2026-10-06)", () => {
+  it("embeds exactly the reviewed public key fixture", () => {
+    expect(VENDORED_REKOR_PUBLIC_KEY).toBe(readFileSync(VENDORED_PEM, "utf-8"));
+    expect(spkiSha256(VENDORED_REKOR_PUBLIC_KEY)).toBe("c0d23d6ad406973f9559f3ba2d1ca01f84147d8ffc5b8445c224f98b9591801d");
+  });
+
+  it("verifies with the built Node CLI outside the repository, without --rekor-key", () => {
+    const dir = copyPositive();
+    writeFileSync(join(dir, "rekor.json"), readFileSync(RECORDED));
+    const output = join(root, "build");
+    const build = Bun.spawnSync(["bun", "build", "src/cli/index.ts", "--outdir", output, "--target", "node"], { cwd: repoRoot });
+    expect(build.exitCode).toBe(0);
+    const proc = Bun.spawnSync(["node", join(output, "index.js"), "verify-bundle", dir, "--rekor"], { cwd: root });
+    expect(proc.exitCode).toBe(0);
+    expect(proc.stderr.toString()).toBe("");
+    expect(proc.stdout.toString()).toContain(`vendored trust anchor spki-sha256:${spkiSha256(VENDORED_REKOR_PUBLIC_KEY)}`);
+  });
+
   it("the recorded anchor is the positive vector's manifest, and it verifies with the vendored log key", () => {
     const recorded = JSON.parse(readFileSync(RECORDED, "utf-8")) as RekorArtifact;
     const source = JSON.parse(readFileSync(join(repoRoot, "fixtures/rekor/log-entry.json"), "utf-8")) as {

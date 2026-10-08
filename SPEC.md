@@ -178,7 +178,8 @@ Notes for implementers:
 - Manifest entries are **untrusted input**. The writer only ever emits clean relative paths; an absolute path, `..`, or `\` in an entry is proof of tampering *and* an attempt to point verification outside the bundle. A verifier MUST reject such an entry before touching the filesystem with it.
 - There is no allowlist for "junk" files (`.DS_Store`, `Thumbs.db`). An allowlist is an attacker's hiding spot. The only exemptions are the five names in V-12, exact-match. `rekor.json` is exempt so a time anchor can sit beside the manifest; its bytes are checked only by `--rekor` (§6.1), the way the signature artifacts are checked only by Cosign.
 - Malformed input (a manifest that is not an object, an entry that is a number, an unreadable file, a `report.json` that does not parse) is a custody **verdict** ("unverifiable"), never an exception out of the verifier. The strict parser rejects nesting deeper than 256 with `JSON nesting exceeds 256` rather than overflowing its stack. The root value is depth 1.
-- V-11's unparseable-`report.json` case is a clarification of the check that already read the file (0.5.0 named only the duplicate-key failure). It is not a new numbered check. Vectors: `unparseable-report`, `nested-report`.
+- JSON artifacts MUST be decoded as UTF-8 without replacing invalid bytes. Hashes remain over the original bytes. Invalid UTF-8 in `manifest.json` is a manifest parse failure; in `report.json` it is V-11.
+- V-11's unparseable-`report.json` case is a clarification of the check that already read the file (0.5.0 named only the duplicate-key failure). It is not a new numbered check. Vectors: `unparseable-report`, `nested-report`, `invalid-utf8-report`.
 
 ---
 
@@ -193,14 +194,17 @@ cosign verify-blob --key cosign.pub --bundle <bundle>/manifest.sig.bundle <bundl
 
 # keyless (Sigstore OIDC; pin issuer and identity)
 cosign sign-blob --yes --bundle manifest.sig.bundle manifest.json
+: "${EXPECTED_SIGNER_IDENTITY:?Set the independently trusted workflow identity, including its ref}"
 cosign verify-blob --bundle manifest.sig.bundle \
-  --certificate-identity-regexp "https://github.com/.*mlassure" \
+  --certificate-identity "$EXPECTED_SIGNER_IDENTITY" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" manifest.json
 ```
 
-`verify-bundle` does **not** check the signature and says so in its output. A complete verification is the format checks (§5) *and* a Cosign verification. A signature over a manifest that fails §5 proves only that someone signed a broken manifest.
+Trust policy MUST supply `cosign.pub` or the exact `EXPECTED_SIGNER_IDENTITY` independently of the bundle. For GitHub Actions, the expected identity includes the owner, repository, workflow path and ref. Do not use a broad repository-name regular expression as signer authorization.
 
-Who holds the signing key determines what the signature is worth. With an operator-held key pair, the signature attests that the operator produced these bytes: an outsider still trusts the operator's key custody. Keyless signing places the signing event in Rekor, Sigstore's public append-only transparency log. Recording that log entry is §6.1. It is a time anchor for the manifest hash. It is not a claim that the bundle is Proof-of-Control, and it does not by itself say who controls the signing key (that remains the Cosign verification above).
+`verify-bundle` does **not** check the Cosign bundle signature and says so in its output. A complete verification is the format checks (§5) *and* a Cosign verification. A signature over a manifest that fails §5 proves only that someone signed a broken manifest. The optional Rekor check separately verifies the artifact signature embedded in a supported hashedrekord entry (§6.1); that public-key fingerprint is not a named-person or OIDC authorization policy.
+
+Who holds the signing key determines what the signature is worth. With an operator-held key pair, an outsider must independently trust both the key's attribution and the operator's key custody. Cosign's keyless path uses Fulcio/OIDC and Rekor. The separate §6.1 check supports only bare-public-key hashedrekord entries; it does not verify that keyless path. Its time anchor for the manifest hash neither establishes Proof-of-Control nor identifies who controls the signing key.
 
 ### 6.1 Time anchor: `rekor.json` and `verify-bundle --rekor`
 
@@ -211,7 +215,9 @@ mlassure verify-bundle <bundle> --rekor
 mlassure verify-bundle <bundle> --rekor --rekor-checkpoint <note> --rekor-key <pem>
 ```
 
-`--rekor-checkpoint` replaces the checkpoint recorded in the file (a test supplies a forked log this way). `--rekor-key` names the log public key. When it is omitted and the checkpoint signer is `rekor.sigstore.dev`, the verifier uses `fixtures/rekor/rekor.sigstore.dev.pub.pem`, the public key fetched from `https://rekor.sigstore.dev/api/v1/log/publicKey` on 2026-10-06. Any other signer without `--rekor-key` is a failure: the verifier does not guess a trust anchor.
+`--rekor-checkpoint` replaces the checkpoint recorded in the file (a test supplies a forked log this way). `--rekor-key` names an independently trusted ECDSA P-256 public key in bare SPKI PEM form. When it is omitted and the checkpoint signature label is `rekor.sigstore.dev`, the verifier uses the key embedded in `src/output/rekor-key.ts`, pinned by a test to `fixtures/rekor/rekor.sigstore.dev.pub.pem`, fetched from `https://rekor.sigstore.dev/api/v1/log/publicKey` on 2026-10-06. Other labels require `--rekor-key`. Key rotation requires a reviewed update; there is no online key discovery.
+
+The note's signature label is **unsigned**. It can select the default key but cannot authenticate the log name. The signed origin is a statement by the configured key, not a separately verified network identity. A successful result MUST identify the verified key by its full SPKI SHA-256 and distinguish vendored from custom trust. The API's `signer` field is the untrusted note label for inspection only; `logID` and `trustSource` carry the trust attribution. Supplying a custom key never makes its signature evidence of the public Rekor service.
 
 The file is JSON with `kind` `"mlassure-rekor-anchor-v1"` and these members:
 
@@ -221,7 +227,7 @@ The file is JSON with `kind` `"mlassure-rekor-anchor-v1"` and these members:
 | `logIndex` | safe integer ≥ 0 | The entry's log index, an input to the signed entry timestamp. On the public log this can be greater than `treeSize`. It is not the verdict. |
 | `treeIndex` | safe integer ≥ 0, `< treeSize` | The leaf's position in the tree of `treeSize` (Rekor's `inclusionProof.logIndex`). An input to the Merkle proof, not the verdict. |
 | `treeSize` | safe integer ≥ 1 | Tree size the inclusion proof and the checkpoint were taken at. |
-| `integratedTime` | safe integer ≥ 0 | Unix seconds. The log time T in claim CC-4. |
+| `integratedTime` | integer in 0..8640000000000 | Unix seconds, within the CLI's representable date range. The log's asserted time T in claim CC-4. |
 | `identity` | `spki-sha256:<64 lowercase hex>` | SHA-256 of the SPKI DER of the key that signed the manifest hash. This version verifies hashedrekord entries, so the identity is that key, not an OIDC subject. |
 | `manifestSha256` | 64 lowercase hex | SHA-256 of the `manifest.json` bytes on disk. |
 | `canonicalBody` | base64 | The exact Rekor canonical body. The leaf preimage. |
@@ -231,7 +237,7 @@ The file is JSON with `kind` `"mlassure-rekor-anchor-v1"` and these members:
 | `signedEntryTimestamp` | base64 | ASN.1 ECDSA signature over the timestamp payload below. |
 | `checkpoint` | string | The signed-note checkpoint at `treeSize`, exact text. |
 
-The canonical body MUST be a Rekor `hashedrekord` entry (`kind` `"hashedrekord"`) whose `spec.data.hash` is `sha256` and `manifestSha256`, and whose `spec.signature` verifies over the manifest bytes under the public key named by `identity`. A keyless (certificate) entry is rejected by name; this version does not verify one.
+The canonical body MUST decode as a UTF-8 JSON object with `kind` `"hashedrekord"` and `apiVersion` `"0.0.1"`. Its `spec.data.hash` MUST be `sha256` and `manifestSha256`, and its `spec.signature` MUST verify over the manifest bytes under the public key named by `identity`. The decoded key MUST be a bare SPKI `PUBLIC KEY` PEM. Certificates (including certificates inside hashedrekord) and private keys are rejected; this version does not validate a Fulcio certificate, certificate chain, validity period or OIDC subject. All base64 fields MUST use non-empty canonical standard base64, including required padding; invalid characters and noncanonical encodings are rejected.
 
 Leaf and node hashes are RFC 6962, as used by Rekor's Trillian log: leaf `SHA-256(0x00 || bytes)`, node `SHA-256(0x01 || left || right)`. The proof is consumed leaf-toward-root by the certificate-transparency iterative verifier. The recomputed root MUST equal both `rootHash` and the 32-byte root in the checkpoint. **The verifier compares those roots. It does not treat either index as success.** A checkpoint whose tree size differs is rejected, including a later and larger log head: this version does not check consistency proofs.
 
@@ -250,8 +256,13 @@ The checkpoint is a signed note. Its body is three lines — origin, decimal tre
 | not this artifact | `rekor.json is not an mlassure Rekor anchor` |
 | manifest digest | `rekor manifest digest does not match manifest.json` |
 | leaf vs body | `rekor leaf hash does not match the canonical body` |
+| malformed base64 body | `rekor canonical body is not base64` |
+| body parse or UTF-8 failure | `rekor canonical body cannot be parsed:` |
+| non-object body | `rekor canonical body must be a JSON object` |
 | body is not hashedrekord | `rekor canonical body is not a hashedrekord entry` |
+| unsupported entry version | `rekor hashedrekord apiVersion must be` |
 | body hash | `rekor canonical body hash does not match manifestSha256` |
+| unsupported key, certificate or malformed signature | `rekor logged public key or artifact signature is not usable:` |
 | identity vs logged key | `rekor identity` |
 | artifact signature | `rekor artifact signature does not verify` |
 | proof shape | `rekor inclusion proof is not valid:` |
@@ -261,12 +272,13 @@ The checkpoint is a signed note. Its body is three lines — origin, decimal tre
 | tree size mismatch | `rekor checkpoint tree size` |
 | unknown signer, no key supplied | `rekor checkpoint signer` |
 | log id vs key | `rekor logID` |
+| unsupported log key | `rekor log public key is not usable:` |
 | checkpoint signature | `rekor checkpoint signature did not verify` |
 | entry timestamp | `rekor signed entry timestamp did not verify` |
 
 These checks run only under `--rekor`, so they are not V-numbers and they are not in `fixtures/bundles/negative/`. A negative vector there is judged by `verify-bundle` without the flag; an anchor fault would not fail that command. The reference tests are `src/output/rekor.test.ts`. One of them re-verifies a real public-log entry, recorded in `fixtures/rekor/` (see that directory's README for the log index, what was submitted live, and what CI re-checks offline).
 
-Claim CC-4, and only CC-4, is what a successful `--rekor` supports: manifest hash H was logged under identity I at log time T. The command's own output says so, and says that this is not Proof-of-Control and not a Tier 3 custody claim. See `docs/proof-of-control.md`.
+Claim CC-4 is the narrow result: a manifest signed by key fingerprint I is included in the tree committed to by the configured log key, and that log key attests entry time T. `integratedTime` is covered by the signed entry timestamp, **not by the Merkle leaf**. Clock accuracy and honest timestamping remain log-operator assumptions. The verifier establishes neither consistency with a later head, global absence of forks, independent monitoring, nor freshness. It does not bind I to a person, OIDC identity or custody process. Tier 3 prerequisites are not established by this check; neither Proof-of-Control conformance nor Tier 3 custody is claimed. See `docs/proof-of-control.md`.
 
 ---
 

@@ -108,7 +108,7 @@ The image never bakes in `ANTHROPIC_API_KEY` — no build `ARG`, no `ENV` with a
 
 ## Custody chain
 
-The bundle format is specified on its own in [`SPEC.md`](SPEC.md), with a machine-readable manifest schema (`fixtures/schemas/bundle-manifest.schema.json`) and conformance vectors in [`fixtures/bundles/`](fixtures/bundles/README.md): one positive bundle and nineteen single-fault negatives, each of which must be rejected *for its stated reason*. How the format lines up against LF Decentralized Trust's Proof-of-Control standard — Tier 2 for the custody claim, with a separate Tier 3 time-anchoring claim (CC-4) that is not Proof-of-Control — is in [`docs/proof-of-control.md`](docs/proof-of-control.md).
+The bundle format is specified on its own in [`SPEC.md`](SPEC.md), with a machine-readable manifest schema (`fixtures/schemas/bundle-manifest.schema.json`) and conformance vectors in [`fixtures/bundles/`](fixtures/bundles/README.md): one positive bundle and twenty single-fault negatives, each of which must be rejected *for its stated reason*. How the format lines up against LF Decentralized Trust's Proof-of-Control standard — Tier 2 for the custody claim, with a separate log-signed inclusion and time claim (CC-4) whose Tier 3 prerequisites are not established — is in [`docs/proof-of-control.md`](docs/proof-of-control.md).
 
 Every assessment run can emit a tamper-evident evidence bundle:
 
@@ -135,12 +135,15 @@ Sign the manifest with Cosign — the manifest covers the files, the signature c
 cosign sign-blob --key cosign.key --yes --bundle out/bundle-<ts>/manifest.sig.bundle out/bundle-<ts>/manifest.json
 cosign verify-blob --key cosign.pub --bundle out/bundle-<ts>/manifest.sig.bundle out/bundle-<ts>/manifest.json
 
-# CI (keyless, Sigstore OIDC — pin the issuer and identity, same pattern as cgep-capstone):
+# CI (keyless, Sigstore OIDC — configure the exact expected workflow identity):
 cosign sign-blob --yes --bundle manifest.sig.bundle manifest.json
+: "${EXPECTED_SIGNER_IDENTITY:?Set the independently trusted workflow identity, including its ref}"
 cosign verify-blob --bundle manifest.sig.bundle \
-  --certificate-identity-regexp "https://github.com/.*mlassure" \
+  --certificate-identity "$EXPECTED_SIGNER_IDENTITY" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" manifest.json
 ```
+
+Obtain `cosign.pub` or `EXPECTED_SIGNER_IDENTITY` from your own trust policy, independently of the bundle producer. The keyless identity must name the intended owner, repository, workflow and ref; a match against any GitHub repository containing `mlassure` is not an identity policy.
 
 **Custody properties, each mapped to its mechanism:**
 

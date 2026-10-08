@@ -28,9 +28,9 @@ const positives = dirs(POSITIVE);
 const negatives = dirs(NEGATIVE);
 
 describe("conformance vectors — fixture tree", () => {
-  it("has at least 1 positive and at least 19 negative vectors (never passes vacuously)", () => {
+  it("has at least 1 positive and at least 20 negative vectors (never passes vacuously)", () => {
     expect(positives.length).toBeGreaterThanOrEqual(1);
-    expect(negatives.length).toBeGreaterThanOrEqual(19);
+    expect(negatives.length).toBeGreaterThanOrEqual(20);
   });
 
   it("every negative vector has an EXPECTED.json beside it naming check + errorPattern", () => {

@@ -15,6 +15,15 @@
  * place; it is not a performance path (manifests are kilobytes).
  */
 
+/** Decode without silently replacing invalid bytes or stripping a BOM. */
+export function decodeUtf8Strict(bytes: Uint8Array): string {
+  try {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    throw new Error("invalid UTF-8");
+  }
+}
+
 export class DuplicateKeyError extends Error {
   constructor(
     public readonly key: string,

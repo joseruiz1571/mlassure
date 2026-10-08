@@ -317,12 +317,12 @@ function runVerifyBundle(dir: string, opts: VerifyOptions): never {
       console.log(
         `  Rekor: inclusion OK — checkpoint root matches the inclusion root at tree size ${result.rekor.treeSize} (entry log index ${result.rekor.logIndex}, proof index ${result.rekor.treeIndex}; neither was the comparison).`
       );
-      console.log(`  Log time: ${t}  Identity: ${result.rekor.identity}`);
+      console.log(`  Log-asserted time: ${t}  Signing-key fingerprint: ${result.rekor.identity}`);
       console.log(
-        `  Checkpoint signature and signed entry timestamp verified with ${result.rekor.signer}.`
+        `  Checkpoint signature and signed entry timestamp verified with ${result.rekor.trustSource} trust anchor spki-sha256:${result.rekor.logID}.`
       );
       console.log(
-        `  Claim CC-4 only: this manifest's hash was logged under that identity at that log time. Not Proof-of-Control, and not a Tier 3 custody claim.`
+        `  Claim CC-4 only: signed inclusion of this manifest hash and a log-asserted timestamp. No later-head consistency or independent monitoring verified. Not Proof-of-Control, and not a Tier 3 custody claim.`
       );
     }
     process.exit(0);

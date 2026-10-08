@@ -485,6 +485,23 @@ const VECTORS: Vector[] = [
     },
   },
   {
+    name: "invalid-utf8-report",
+    check: "V-11",
+    errorPattern: "^report\\.json cannot be parsed: invalid UTF-8",
+    description:
+      "report.json contains byte FF inside a string, with its digest, byte count and root re-sealed. Lossy UTF-8 decoding would accept it with a replacement character; strict decoding must reject it for V-11 alone.",
+    apply: (dir) => {
+      const path = join(dir, "report.json");
+      const report = readFileSync(path, "utf-8");
+      writeFileSync(path, Buffer.concat([
+        Buffer.from(report.replace(/}\s*$/, ',"invalidEncoding":"')),
+        Buffer.from([0xff]),
+        Buffer.from('"}'),
+      ]));
+      remanifestFile(dir, "report.json");
+    },
+  },
+  {
     name: "nested-report",
     check: "V-11",
     errorPattern: "^report\\.json cannot be parsed: JSON nesting exceeds 256",

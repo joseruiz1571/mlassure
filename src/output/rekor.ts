@@ -35,10 +35,10 @@ import {
   type KeyObject,
 } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { leafHash, rootFromInclusionProof } from "./merkle.js";
-import { parseJsonStrict, DuplicateKeyError } from "./strict-json.js";
+import { parseJsonStrict, DuplicateKeyError, decodeUtf8Strict } from "./strict-json.js";
+import { VENDORED_REKOR_PUBLIC_KEY } from "./rekor-key.js";
 
 /** Same file `bundle.ts` names `MANIFEST_FILENAME`. Kept here to avoid a cycle. */
 const MANIFEST_FILENAME = "manifest.json";
@@ -85,6 +85,10 @@ export type RekorAnchor = {
   treeSize: number;
   integratedTime: number;
   identity: string;
+  /** Full fingerprint of the verified, independently configured log key. */
+  logID: string;
+  trustSource: "vendored" | "custom";
+  /** Unsigned note label. Informational only; never an authenticated log name. */
   signer: string;
 };
 
@@ -107,11 +111,24 @@ function sha256Hex(buf: Uint8Array): string {
   return createHash("sha256").update(buf).digest("hex");
 }
 
-function vendoredRekorPublicKeyPem(): string {
-  return readFileSync(
-    join(dirname(fileURLToPath(import.meta.url)), "../../fixtures/rekor/rekor.sigstore.dev.pub.pem"),
-    "utf-8"
-  );
+function decodeBase64(value: string): Buffer {
+  // Buffer.from alone ignores invalid characters and accepts truncated input.
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+    throw new Error("not canonical standard base64");
+  }
+  const bytes = Buffer.from(value, "base64");
+  if (bytes.length === 0 || bytes.toString("base64") !== value) {
+    throw new Error("not non-empty canonical standard base64");
+  }
+  return bytes;
+}
+
+/** createPublicKey also accepts certificates/private keys; our profile does not. */
+function barePublicKey(pem: string): KeyObject {
+  if (!/^-----BEGIN PUBLIC KEY-----\r?\n[A-Za-z0-9+/=\r\n]+\r?\n-----END PUBLIC KEY-----\r?\n?$/.test(pem)) {
+    throw new Error("expected a bare SPKI PUBLIC KEY PEM; certificates and private keys are unsupported");
+  }
+  return createPublicKey(pem);
 }
 
 export function spkiSha256(pemOrKey: string | KeyObject): string {
@@ -178,7 +195,7 @@ function parseCheckpoint(text: string): ParsedCheckpoint {
   if (lastSpace <= 2) throw new Error("signature line has no signature");
   const signer = sigLine.slice(2, lastSpace);
   const sigB64 = sigLine.slice(lastSpace + 1);
-  const raw = Buffer.from(sigB64, "base64");
+  const raw = decodeBase64(sigB64);
   if (raw.length < 5 || signer.length === 0) throw new Error("signature line is malformed");
   const lines = body.split("\n");
   // body ends with \n, so split yields a trailing empty string.
@@ -187,7 +204,8 @@ function parseCheckpoint(text: string): ParsedCheckpoint {
   const sizeStr = lines[1]!;
   const rootB64 = lines[2]!;
   if (!/^(0|[1-9][0-9]*)$/.test(sizeStr)) throw new Error("checkpoint tree size is not a decimal integer");
-  const root = Buffer.from(rootB64, "base64");
+  if (origin.length === 0) throw new Error("checkpoint origin is empty");
+  const root = decodeBase64(rootB64);
   if (root.length !== 32) throw new Error("checkpoint root is not 32 bytes");
   return { body, origin, treeSize: BigInt(sizeStr), root, signer, signature: raw };
 }
@@ -214,7 +232,7 @@ function verifySetSignature(payload: string, setB64: string, pem: string): boole
   let sig: Buffer;
   try {
     key = createPublicKey(pem);
-    sig = Buffer.from(setB64, "base64");
+    sig = decodeBase64(setB64);
   } catch {
     return false;
   }
@@ -245,7 +263,7 @@ export function verifyRekorAnchor(dir: string, opts: RekorVerifyOptions = {}): R
 
   let parsed: unknown;
   try {
-    parsed = parseJsonStrict(readFileSync(rekorPath, "utf-8"));
+    parsed = parseJsonStrict(decodeUtf8Strict(readFileSync(rekorPath)));
   } catch (err) {
     const detail =
       err instanceof DuplicateKeyError
@@ -265,7 +283,13 @@ export function verifyRekorAnchor(dir: string, opts: RekorVerifyOptions = {}): R
     };
   }
 
-  const manifestSha256 = sha256Hex(readFileSync(manifestPath));
+  let manifestBytes: Buffer;
+  try {
+    manifestBytes = readFileSync(manifestPath);
+  } catch (err) {
+    return { errors: [`rekor cannot read manifest.json: ${err instanceof Error ? err.message : String(err)}`] };
+  }
+  const manifestSha256 = sha256Hex(manifestBytes);
   if (!isHex64(a["manifestSha256"])) {
     errors.push(`rekor.json manifestSha256 is not 64 lowercase hex`);
   } else if (a["manifestSha256"] !== manifestSha256) {
@@ -301,8 +325,9 @@ export function verifyRekorAnchor(dir: string, opts: RekorVerifyOptions = {}): R
       `rekor.json treeIndex ${a["treeIndex"]} is outside tree size ${a["treeSize"]}`
     );
   }
-  if (!Number.isSafeInteger(a["integratedTime"]) || (a["integratedTime"] as number) < 0) {
-    errors.push(`rekor.json integratedTime is not a non-negative safe integer`);
+  if (!Number.isSafeInteger(a["integratedTime"]) || (a["integratedTime"] as number) < 0 ||
+      (a["integratedTime"] as number) > 8_640_000_000_000) {
+    errors.push(`rekor.json integratedTime must be integer Unix seconds in 0..8640000000000`);
   }
   if (typeof a["identity"] !== "string" || !a["identity"].startsWith("spki-sha256:")) {
     errors.push(`rekor.json identity is not spki-sha256:<hex>`);
@@ -321,7 +346,7 @@ export function verifyRekorAnchor(dir: string, opts: RekorVerifyOptions = {}): R
   const art = a as unknown as RekorArtifact;
   let body: Buffer;
   try {
-    body = Buffer.from(art.canonicalBody, "base64");
+    body = decodeBase64(art.canonicalBody);
   } catch {
     return { errors: [`rekor canonical body is not base64`] };
   }
@@ -336,13 +361,18 @@ export function verifyRekorAnchor(dir: string, opts: RekorVerifyOptions = {}): R
 
   let bodyJson: unknown;
   try {
-    bodyJson = parseJsonStrict(body.toString("utf-8"));
+    bodyJson = parseJsonStrict(decodeUtf8Strict(body));
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     errors.push(`rekor canonical body cannot be parsed: ${detail}`);
     return { errors };
   }
+  if (typeof bodyJson !== "object" || bodyJson === null || Array.isArray(bodyJson)) {
+    errors.push(`rekor canonical body must be a JSON object`);
+    return { errors };
+  }
   const rec = bodyJson as {
+    apiVersion?: unknown;
     kind?: unknown;
     spec?: {
       data?: { hash?: { algorithm?: unknown; value?: unknown } };
@@ -351,8 +381,12 @@ export function verifyRekorAnchor(dir: string, opts: RekorVerifyOptions = {}): R
   };
   if (rec.kind !== "hashedrekord") {
     errors.push(
-      `rekor canonical body is not a hashedrekord entry (kind ${JSON.stringify(rec.kind)}) — keyless certificate entries are not verified by this version`
+      `rekor canonical body is not a hashedrekord entry (kind ${JSON.stringify(rec.kind)})`
     );
+    return { errors };
+  }
+  if (rec.apiVersion !== "0.0.1") {
+    errors.push(`rekor hashedrekord apiVersion must be "0.0.1"`);
     return { errors };
   }
   const algorithm = rec.spec?.data?.hash?.algorithm;
@@ -370,19 +404,19 @@ export function verifyRekorAnchor(dir: string, opts: RekorVerifyOptions = {}): R
   } else {
     let signerPem: string;
     try {
-      signerPem = Buffer.from(pkB64, "base64").toString("utf-8");
-      const id = `spki-sha256:${spkiSha256(signerPem)}`;
+      signerPem = decodeUtf8Strict(decodeBase64(pkB64));
+      const signerKey = barePublicKey(signerPem);
+      const id = `spki-sha256:${spkiSha256(signerKey)}`;
       if (id !== art.identity) {
         errors.push(
           `rekor identity ${art.identity} does not match the logged public key ${id}`
         );
       }
-      const manifestBytes = readFileSync(manifestPath);
       const ok = verify(
         "sha256",
         manifestBytes,
-        createPublicKey(signerPem),
-        Buffer.from(sigB64, "base64")
+        signerKey,
+        decodeBase64(sigB64)
       );
       if (!ok) {
         errors.push(`rekor artifact signature does not verify under the logged identity`);
@@ -434,7 +468,7 @@ export function verifyRekorAnchor(dir: string, opts: RekorVerifyOptions = {}): R
   }
 
   if (cp !== null) {
-    const pem = opts.rekorPublicKeyPem ?? (cp.signer === VENDORED_REKOR_SIGNER ? vendoredRekorPublicKeyPem() : undefined);
+    const pem = opts.rekorPublicKeyPem ?? (cp.signer === VENDORED_REKOR_SIGNER ? VENDORED_REKOR_PUBLIC_KEY : undefined);
     if (pem === undefined) {
       errors.push(
         `rekor checkpoint signer ${JSON.stringify(cp.signer)} is not the vendored Rekor log key; pass --rekor-key to name the trust anchor`
@@ -442,7 +476,11 @@ export function verifyRekorAnchor(dir: string, opts: RekorVerifyOptions = {}): R
     } else {
       let logId: string;
       try {
-        logId = spkiSha256(pem);
+        const logKey = barePublicKey(pem);
+        if (logKey.asymmetricKeyType !== "ec" || logKey.asymmetricKeyDetails?.namedCurve !== "prime256v1") {
+          throw new Error("log key must be ECDSA P-256");
+        }
+        logId = spkiSha256(logKey);
       } catch (err) {
         errors.push(
           `rekor log public key is not usable: ${err instanceof Error ? err.message : String(err)}`
@@ -455,7 +493,7 @@ export function verifyRekorAnchor(dir: string, opts: RekorVerifyOptions = {}): R
         );
       }
       if (!verifyCheckpointSignature(cp, pem)) {
-        errors.push(`rekor checkpoint signature did not verify under ${cp.signer}`);
+        errors.push(`rekor checkpoint signature did not verify under the configured log key`);
       }
       const payload = entryTimestampPayload(
         art.canonicalBody,
@@ -476,6 +514,8 @@ export function verifyRekorAnchor(dir: string, opts: RekorVerifyOptions = {}): R
             treeSize: art.treeSize,
             integratedTime: art.integratedTime,
             identity: art.identity,
+            logID: logId,
+            trustSource: opts.rekorPublicKeyPem === undefined ? "vendored" : "custom",
             signer: cp.signer,
           },
         };

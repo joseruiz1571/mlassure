@@ -42,7 +42,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import type { AssessmentReport } from "../runner/assessment-runner.js";
-import { parseJsonStrict, DuplicateKeyError } from "./strict-json.js";
+import { parseJsonStrict, DuplicateKeyError, decodeUtf8Strict } from "./strict-json.js";
 import { REKOR_FILENAME, verifyRekorAnchor, type RekorAnchor, type RekorVerifyOptions } from "./rekor.js";
 
 export const BUNDLE_FORMAT_VERSION = "1";
@@ -349,7 +349,7 @@ export function verifyEvidenceBundle(dir: string, opts: VerifyOptions = {}): Ver
   // (Proof-of-Control C7.7.5).
   let manifest: BundleManifest;
   try {
-    manifest = parseJsonStrict(readFileSync(manifestPath, "utf-8")) as BundleManifest;
+    manifest = parseJsonStrict(decodeUtf8Strict(readFileSync(manifestPath))) as BundleManifest;
   } catch (err) {
     if (err instanceof DuplicateKeyError) {
       return {
@@ -492,15 +492,15 @@ export function verifyEvidenceBundle(dir: string, opts: VerifyOptions = {}): Ver
   // is V-8/V-9 and is not also reported here.
   const reportPath = join(dir, "report.json");
   if (existsSync(reportPath)) {
-    let reportRaw: string | undefined;
+    let reportRaw: Buffer | undefined;
     try {
-      reportRaw = readFileSync(reportPath, "utf-8");
+      reportRaw = readFileSync(reportPath);
     } catch {
       reportRaw = undefined;
     }
     if (reportRaw !== undefined) {
       try {
-        const report = parseJsonStrict(reportRaw);
+        const report = parseJsonStrict(decodeUtf8Strict(reportRaw));
         if (typeof report !== "object" || report === null || Array.isArray(report)) {
           errors.push(`report.json cannot be parsed: top-level value is not an object`);
         } else {

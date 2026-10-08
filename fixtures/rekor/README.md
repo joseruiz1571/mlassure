@@ -28,7 +28,11 @@ CI runs `verify-bundle --rekor` on a copy of the positive bundle plus `rekor.jso
 - the signed entry timestamp over the canonical payload `{body, integratedTime, logID, logIndex}`
 - that the hashedrekord body commits to the manifest bytes on disk and to the logged public key
 
-CI does not contact Rekor, does not perform a keyless Fulcio/OIDC signing, and does not check a consistency proof from this tree size to a later log head. A checkpoint whose tree is larger than the proof's is rejected. Synthetic tests in `src/output/rekor.test.ts` use a throwaway log key so a forked tree with the same index can be forced to fail on the root.
+CI does not contact Rekor, does not perform a keyless Fulcio/OIDC signing, and does not check a consistency proof from this tree size to a later log head. A checkpoint whose tree is larger than the proof's is rejected. Synthetic tests in `src/output/rekor.test.ts` reject a mismatched proof/checkpoint root, but also show that two coherent, signed forks each verify locally. They separately corrupt each signature while keeping all other checks valid. The timestamp is a signed assertion by the log operator; it is outside the Merkle leaf.
+
+The default public key is embedded in `src/output/rekor-key.ts`; a test compares it byte-for-byte with the PEM here and runs the built Node CLI from outside the repository. Its SPKI SHA-256 is `c0d23d6ad406973f9559f3ba2d1ca01f84147d8ffc5b8445c224f98b9591801d`. The CLI attributes verification to that full fingerprint and to vendored/custom trust, never to the unsigned note label alone. Rotation requires a reviewed key update.
+
+Run `bun scripts/check-rekor-mutations.ts` to verify that removing each checkpoint-signature, SET-signature, artifact-signature or identity-binding guard makes its isolated negative fail. The script changes a disposable copy only and first requires an unmodified passing baseline. Ordinary CI runs the regressions through `bun test`; the mutation experiment is a separate command.
 
 Re-fetch the public entry (the inclusion proof in the response grows with the log; the checkpoint captured here is the one at tree size `2984025649`):
 

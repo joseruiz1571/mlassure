@@ -1168,7 +1168,7 @@ The pattern tag on a control is a vocabulary assignment. M3f makes each assignme
 | M6 | Custody chain SPEC.md (bundle format v1) + `fixtures/bundles/` conformance vectors (positive + negative, each negative naming the check it must fail) + verifier hardening for algorithm-id and duplicate-key rejection (C7.7.3, C7.7.5) → 0.5.0 | this run |
 | M7 | `docs/proof-of-control.md`: requirement-level crosswalk of the custody chain against PoC C7.3/C7.5/C7.6/C7.7/C8.1/C10, honest tier placement (Tier 2 today; Tier 3 path named), C10.2 trust-assumption disclosure; public-comment draft for Jose (outside the repo) | this run |
 | M8 | Target generalization + Proof-of-Control control family: provider interface decoupled from SageMaker; `fixtures/controls/poc-c7-subset.yaml` assessing a PoC evidence token / conformance statement with deterministic checks (7.7.1 schema-valid, 7.7.3 tagged digests, 7.7.5 duplicate keys, 7.6.2 monotonic step_index), attestation (7.3.2 key custody), synthesis (10.2 disclosure completeness); OSCAL AR answers the procurement binary | done on main — M8a PR #3, M8b PR #4, M8c PR #7; unreleased (no 0.6.0 tag) |
-| M9 | Tier-3 time-anchoring claim CC-4: Rekor inclusion proof recorded as `rekor.json`; `verify-bundle --rekor` compares the checkpoint root, not the log index. Not a promotion of CC-2 and not a Tier 3 custody claim | this hillclimb |
+| M9 | Log-signed inclusion and time claim CC-4 (Tier 3 unestablished): Rekor inclusion proof recorded as `rekor.json`; `verify-bundle --rekor` compares the checkpoint root, not the log index. Not a promotion of CC-2 and not a Tier 3 custody claim | this hillclimb |
 | 1.0 gate | A stranger can clone, run the fixtures, write a bundle, verify it, sign and verify keyless, validate the OSCAL AR against NIST's schema, and run the conformance vectors — all from README, with CI green proving it; SPEC.md and the PoC crosswalk published; CHANGELOG current | after M8 |
 | post-1.0 | M4 live AWS read-only provider; BUI-10 GRC Club Finding contract; BUI-11 SCF crosswalk; BUI-63 OMS/CycloneDX comparison | backlog |
 
@@ -1401,7 +1401,7 @@ Read for this design: `schema/poc-evidence.schema.json`, `schema/README.md`, `ch
 
 ## M9 Anti-claims
 
-- No "has Proof-of-Control" and no "mlassure is Tier 3". CC-4 is a Tier 3 time-anchoring claim. CC-2 stays Tier 2. The `--rekor` success line says both.
+- No "has Proof-of-Control" and no "mlassure is Tier 3". CC-4 verifies inclusion at a signed checkpoint and a log-asserted time. Its Tier 3 prerequisites are unestablished. CC-2 stays Tier 2. The `--rekor` success line states the boundary.
 - No release tag. Jose decides 0.6.0.
 - No rename of PoC control ids.
 - No change to SageMaker family behavior or its CLI assessment output.
@@ -1417,7 +1417,7 @@ Clarification of V-11, not a new numbered check. `report.json` parse failures ot
 - [x] ISC-M9-2: `verify-bundle --rekor` recomputes an RFC 6962 inclusion proof and fails when the checkpoint root differs even though the index is inside both trees. Falsifier: synthetic test with a forked tree of the same size. — evidence: `merkle.test.ts` sizes 1..32; `rekor.test.ts` "compares the checkpoint root, not the log index"
 - [x] ISC-M9-3: a recorded public Rekor entry for the positive vector's manifest verifies offline under the vendored log key, including the checkpoint signature and the signed entry timestamp, and the CLI names CC-4 and refuses the Proof-of-Control reading. Falsifier: the recorded-entry test and the CLI spawn. — evidence: `rekor.test.ts` "recorded anchor…" and "the CLI prints CC-4…"; `fixtures/rekor/README.md` (log index 3105929320, proof index 2984025058, tree size 2984025649, 2026-10-06T08:56:29Z)
 - [x] ISC-M9-4: a later log head is not accepted as the proof's root. Falsifier: synthetic checkpoint with a larger tree size. — evidence: `rekor.test.ts` "refuses a later log head"
-- [x] ISC-M9-5: SPEC §6.1 and `docs/proof-of-control.md` §2.1 / §5 describe CC-4 as Tier 3 time-anchoring, leave CC-2 at Tier 2, and do not say mlassure is Tier 3 or has Proof-of-Control. Tagged digests are named as not shipped. Falsifier: Read. — evidence: SPEC §6.1 and §8; crosswalk §2.1 CC-4 row and §5
+- [x] ISC-M9-5: SPEC §6.1 and `docs/proof-of-control.md` §2.1 / §5 describe the limited CC-4 inclusion/time result with Tier 3 unestablished, leave CC-2 at Tier 2, and do not say mlassure is Tier 3 or has Proof-of-Control. Tagged digests are named as not shipped. Falsifier: Read. — evidence: SPEC §6.1 and §8; crosswalk §2.1 CC-4 row and §5
 - [x] ISC-M9-6 (BUI-114): an unparseable `report.json` whose digest was recomputed is a V-11 violation with prefix `report.json cannot be parsed:`; nesting past 256 is that prefix plus `JSON nesting exceeds 256`, and the parser does not throw `RangeError`. Falsifier: the two new negative vectors and `strict-json.test.ts`. — evidence: generator self-check; vectors `unparseable-report`, `nested-report`; strict-json nesting test
 - [x] ISC-M9-7: full suite green, typecheck clean. Falsifier: `bun test`, `bun run typecheck`. — evidence: `bun test` 397 pass / 4 skip / 0 fail, 401 tests, 23 files; `tsc --noEmit` clean. The 4 skips are the two live Anthropic tests, the cosign chain, and the cosign presence gate
 - [x] ISC-M9-8: branch pushed, PR open against `main`, not merged, no tag. Falsifier: the PR URL. — evidence: PR #9 (https://github.com/joseruiz1571/mlassure/pull/9), branch `cursor/m9-rekor-anchor-a4a8`; not merged, no tag
@@ -1435,7 +1435,16 @@ Clarification of V-11, not a new numbered check. `report.json` parse failures ot
 
 - Keyless Cosign (Fulcio + OIDC) producing a `rekor.json` from a GitHub Actions identity. The shipped entry is hashedrekord.
 - A consistency proof from tree size 2984025649 to the current log head.
-- Whether Rekor's public-good monitors are independent of the operator (still unverified; CC-4 stays Tier 3, not 4).
+- Whether Rekor's public-good monitors are independent of the operator (still unverified; Tier 3 is not established for CC-4).
 - A second party's recorded run (8.1.5, the remaining half).
 - The vendored log key will go stale if Rekor rotates it. The recorded checkpoint keeps verifying under the key that signed it; a new checkpoint would need a new key.
 - Control-id naming (`PoC-7.7.5` vs a local id) was not touched.
+
+
+## M9 adversarial-review follow-up (2026-10-08)
+
+This correction supersedes the Tier 3 placement in the historical M7/M9 planning and 2026-10-06 completion notes above. A signed inclusion proof at one checkpoint does not establish the independent monitors or global consistency required by the cited Tier 3 example. The log's clock is trusted; the SET timestamp is outside the Merkle leaf. CC-4 is narrowed in SPEC, README, the crosswalk and CLI. No consistency verifier, Fulcio validation, operational gating or custody-tier promotion is claimed.
+
+Implementation corrections: reject certificate/private-key payloads and unsupported hashedrekord versions; reject malformed UTF-8/base64 and non-object canonical bodies; bound displayed timestamps; embed the default key for the built CLI; attribute trust to its full verified fingerprint and vendored/custom source. Exact Cosign signer-policy examples replace the broad GitHub regexp.
+
+The new tests isolate checkpoint, SET and artifact signature failures and identity mismatch, requiring the named cause, no anchor and CLI exit 1. They also preserve two explicit limitation tests: coherent signed forks each pass local inclusion verification, and a re-signed SET can change time without changing the leaf. The invalid-UTF-8 report vector keeps all hashes valid and fails V-11 alone. Validation: 422 pass / 4 skip / 0 fail, typecheck clean, built Node CLI verifies from an unrelated working directory. Removing each of the four guards separately now fails its named regression (`bun scripts/check-rekor-mutations.ts`); the previous suite accepted all four mutations. The recorded-entry re-run requires no fresh signing, correcting the historical 8.1.5 note above. Merge and release remain Jose's decisions.

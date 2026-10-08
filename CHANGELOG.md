@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — adversarial review of M9
+
+- Reject non-object canonical bodies without throwing, unsupported hashedrekord versions, certificate/private-key inputs, noncanonical base64, unsupported log-key algorithms, and timestamps outside the CLI's date range. Decode manifest, report and Rekor JSON as strict UTF-8; the new `invalid-utf8-report` vector retains valid digests and fails V-11 alone.
+- Embed the default log key so the built CLI works independently of source-tree paths. Report its full verified fingerprint and whether trust is vendored or custom; the unsigned checkpoint label is not an authenticated log name.
+- Add isolated negative tests for the checkpoint signature, signed entry timestamp, artifact signature and identity binding, including CLI failure. Add explicit tests demonstrating the remaining fork/clock trust limitations.
+- Withdraw the unsupported Tier 3 placement of CC-4. Document inclusion at one signed checkpoint and log-asserted time, with no later-head consistency, independent monitoring, actor-identity or custody guarantee. Replace broad Cosign identity-regexp examples with exact, independently configured identities.
+
 ### Added — M9 (Rekor time anchor, claim CC-4)
 
 - `rekor.json`, exempt from extra-file detection by exact name, records a Rekor hashedrekord inclusion proof: entry log index, proof index, tree size, audit path, signed entry timestamp, and the checkpoint at that tree size. It is not a manifest member. `bundleFormatVersion` stays `"1"`.
