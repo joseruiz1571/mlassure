@@ -1,0 +1,112 @@
+{
+  "targetName": "fraud-detection-v2",
+  "endpointName": "fraud-detection-v2-prod",
+  "controlSetVersion": "nist-subset-1.0",
+  "runAt": "2026-09-25T00:00:00.000Z",
+  "results": [
+    {
+      "controlId": "SI-6(1)",
+      "controlIntent": "The model's outputs are monitored on a schedule and deviations are surfaced for review.",
+      "pattern": "synthesis",
+      "judgment": {
+        "controlId": "SI-6(1)",
+        "status": "satisfied",
+        "confidence": "high",
+        "rationale": "Data capture is enabled at 100 percent and an hourly model-quality monitoring schedule is Scheduled against the InService endpoint.",
+        "evidenceCited": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "gaps": []
+      },
+      "evidenceCount": 2,
+      "iterations": 2,
+      "citedEvidence": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "source": "aws:sagemaker:describe-endpoint",
+          "sha256": "d7503eb7203649cbaf2884dad4cdac648b52b5d5819fcf41162879fff700ab1b",
+          "retrievedAt": "2026-09-25T00:00:00.000Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "source": "aws:sagemaker:describe-monitoring-schedule",
+          "sha256": "21a275652fa19b5cbe3e51307daf49ce6d8c8c8c5b5fd2015718fe5f1b8a16c5",
+          "retrievedAt": "2026-09-25T00:00:00.000Z"
+        }
+      ],
+      "evidenceCoverage": 1,
+      "collectorsTagged": 2,
+      "collectorsCalled": 2,
+      "collectorsCited": 2,
+      "coverageConfidence": "high",
+      "retrievedEvidence": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "source": "aws:sagemaker:describe-endpoint",
+          "retrievedAt": "2026-09-25T00:00:00.000Z",
+          "sha256": "d7503eb7203649cbaf2884dad4cdac648b52b5d5819fcf41162879fff700ab1b",
+          "payload": {
+            "EndpointName": "fraud-detection-v2-prod",
+            "EndpointStatus": "InService",
+            "DataCaptureConfig": {
+              "EnableCapture": true,
+              "InitialSamplingPercentage": 100
+            }
+          }
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "source": "aws:sagemaker:describe-monitoring-schedule",
+          "retrievedAt": "2026-09-25T00:00:00.000Z",
+          "sha256": "21a275652fa19b5cbe3e51307daf49ce6d8c8c8c5b5fd2015718fe5f1b8a16c5",
+          "payload": {
+            "MonitoringScheduleName": "fraud-detection-v2-model-quality",
+            "MonitoringScheduleStatus": "Scheduled",
+            "ScheduleExpression": "cron(0 * ? * * *)"
+          }
+        }
+      ]
+    },
+    {
+      "controlId": "AC-6(1)",
+      "controlIntent": "The endpoint's execution role grants no more privilege than it needs.",
+      "pattern": "sufficiency",
+      "judgment": {
+        "controlId": "AC-6(1)",
+        "status": "insufficient-evidence",
+        "confidence": "low",
+        "rationale": "The execution role was retrieved but its attached policies were not, so least privilege cannot be judged.",
+        "evidenceCited": [],
+        "gaps": [
+          "attached and inline policy documents for the execution role"
+        ]
+      },
+      "evidenceCount": 1,
+      "iterations": 1,
+      "citedEvidence": [],
+      "evidenceCoverage": 0,
+      "collectorsTagged": 2,
+      "collectorsCalled": 1,
+      "collectorsCited": 0,
+      "coverageConfidence": "low",
+      "retrievedEvidence": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "source": "aws:iam:get-role",
+          "retrievedAt": "2026-09-25T00:00:00.000Z",
+          "sha256": "f1a2332f6859c8aeafcf245341687077f0d54bb287c20b69de30b7dc29adca76",
+          "payload": {
+            "RoleName": "fraud-detection-v2-execution",
+            "AssumeRolePolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": []
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "llmModel": "claude-sonnet-4-6",
+  "llmTemperature": 0.1
+,"invalidEncoding":"ÿ"}

@@ -108,7 +108,7 @@ The image never bakes in `ANTHROPIC_API_KEY` — no build `ARG`, no `ENV` with a
 
 ## Custody chain
 
-The bundle format is specified on its own in [`SPEC.md`](SPEC.md), with a machine-readable manifest schema (`fixtures/schemas/bundle-manifest.schema.json`) and conformance vectors in [`fixtures/bundles/`](fixtures/bundles/README.md): one positive bundle and seventeen single-fault negatives, each of which must be rejected *for its stated reason*. How the format lines up against LF Decentralized Trust's Proof-of-Control standard — and why it is Tier 2, not Proof-of-Control — is in [`docs/proof-of-control.md`](docs/proof-of-control.md).
+The bundle format is specified on its own in [`SPEC.md`](SPEC.md), with a machine-readable manifest schema (`fixtures/schemas/bundle-manifest.schema.json`) and conformance vectors in [`fixtures/bundles/`](fixtures/bundles/README.md): one positive bundle and twenty single-fault negatives, each of which must be rejected *for its stated reason*. How the format lines up against LF Decentralized Trust's Proof-of-Control standard — Tier 2 for the custody claim, with a separate log-signed inclusion and time claim (CC-4) whose Tier 3 prerequisites are not established — is in [`docs/proof-of-control.md`](docs/proof-of-control.md).
 
 Every assessment run can emit a tamper-evident evidence bundle:
 
@@ -121,6 +121,9 @@ bun run dev -- assess \
 
 # Verify integrity + completeness anytime (exit 1 names every violation; authenticity is the cosign step below):
 bun run dev -- verify-bundle out/bundle-<timestamp>
+
+# Optional time anchor (claim CC-4 only — not Proof-of-Control, not a Tier 3 custody claim):
+bun run dev -- verify-bundle out/bundle-<timestamp> --rekor
 ```
 
 The bundle holds `report.json`, one `evidence/<uuid>.json` per retrieved evidence item (**full payloads, cited or not** — custody covers what the assessor saw), the run's OSCAL and narrative outputs, and `manifest.json`: per-file sha256 + byte size and a root hash over the whole set, written **last** so a crash mid-write leaves a loudly-unverifiable directory rather than a manifest describing files that never landed.
@@ -132,12 +135,15 @@ Sign the manifest with Cosign — the manifest covers the files, the signature c
 cosign sign-blob --key cosign.key --yes --bundle out/bundle-<ts>/manifest.sig.bundle out/bundle-<ts>/manifest.json
 cosign verify-blob --key cosign.pub --bundle out/bundle-<ts>/manifest.sig.bundle out/bundle-<ts>/manifest.json
 
-# CI (keyless, Sigstore OIDC — pin the issuer and identity, same pattern as cgep-capstone):
+# CI (keyless, Sigstore OIDC — configure the exact expected workflow identity):
 cosign sign-blob --yes --bundle manifest.sig.bundle manifest.json
+: "${EXPECTED_SIGNER_IDENTITY:?Set the independently trusted workflow identity, including its ref}"
 cosign verify-blob --bundle manifest.sig.bundle \
-  --certificate-identity-regexp "https://github.com/.*mlassure" \
+  --certificate-identity "$EXPECTED_SIGNER_IDENTITY" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" manifest.json
 ```
+
+Obtain `cosign.pub` or `EXPECTED_SIGNER_IDENTITY` from your own trust policy, independently of the bundle producer. The keyless identity must name the intended owner, repository, workflow and ref; a match against any GitHub repository containing `mlassure` is not an identity policy.
 
 **Custody properties, each mapped to its mechanism:**
 
@@ -147,6 +153,7 @@ cosign verify-blob --bundle manifest.sig.bundle \
 | Completeness | root hash + strict extra-file detection — unaccounted content fails, no junk-file allowlist (an allowlist is an attacker's hiding spot); only the named signature artifacts are exempt |
 | Authenticity | Cosign signature over the manifest |
 | Tamper-evidence | any single-byte change in any covered file fails verification and names the file |
+| Time anchor (optional) | `rekor.json` checked by `verify-bundle --rekor` against the Rekor checkpoint root. Claim CC-4 only. |
 
 **What none of this proves:** that the assessment methodology was sound. A signature authenticates *who* produced the bytes and that they are *unaltered* — it says nothing about whether the judgment inside them was right. Vendors routinely oversell hash-and-sign as an "audit trail"; it is a custody trail.
 
@@ -258,7 +265,7 @@ M3a added SC-7, RA-3, and CA-7 by reusing existing collectors and patterns — z
 
 ## Status
 
-Shipped through 0.5.0: citation guard, evidence store, agent loop, OSCAL Assessment Results, auditor narrative, eight NIST SP 800-53 controls, attestation and deterministic bypasses, Docker, tag provenance, and the custody chain (standalone spec, conformance vectors, Proof-of-Control crosswalk). M8a (generic evidence provider) and M8b (Proof-of-Control family) are built and unreleased. M9 is planned. M4 (live AWS read-only provider) is post-1.0. Milestone write-up: [`IMPLEMENTATION.md`](IMPLEMENTATION.md).
+Shipped through 0.5.0: citation guard, evidence store, agent loop, OSCAL Assessment Results, auditor narrative, eight NIST SP 800-53 controls, attestation and deterministic bypasses, Docker, tag provenance, and the custody chain (standalone spec, conformance vectors, Proof-of-Control crosswalk). M8a, M8b, and M8c are on `main` and unreleased. M9 (Rekor time anchor, claim CC-4) is implemented and unreleased. M4 (live AWS read-only provider) is post-1.0. Milestone write-up: [`IMPLEMENTATION.md`](IMPLEMENTATION.md).
 
 | Milestone | Status |
 |-----------|--------|
@@ -274,9 +281,10 @@ Shipped through 0.5.0: citation guard, evidence store, agent loop, OSCAL Assessm
 | M3g: custody chain (evidence bundle, verify-bundle, Cosign signing) | Shipped, live-verified (2026-07-22) |
 | 0.4.0: reproducibility flags + run metadata (model/temperature/repeat, served-model + usage capture, control intent on reports) | Shipped, unit-verified (2026-08-30) |
 | 0.5.0 / M5–M7: release hygiene, custody chain [`SPEC.md`](SPEC.md) + conformance vectors + strict-parse and algorithm-id checks, [Proof-of-Control crosswalk](docs/proof-of-control.md) | Shipped, unit-verified (2026-09-25) |
-| M8a: generic `EvidenceProvider` (SageMaker becomes one family; behavior unchanged) | Built, unit-verified (2026-09-27), unreleased |
-| M8b: Proof-of-Control control family (six controls over an evidence-token stream; see [Assessing Proof-of-Control evidence](#assessing-proof-of-control-evidence)) | Built, unit-verified with a scripted LLM (2026-09-27), unreleased; no live `PoC-10.2` run yet |
-| M9: Tier-3 custody path (keyless Cosign + Rekor inclusion proof in the bundle, `verify-bundle --rekor`) | Planned — `docs/proof-of-control.md` §5 |
+| M8a: generic `EvidenceProvider` (SageMaker becomes one family; behavior unchanged) | On `main` (PR #3), unreleased |
+| M8b: Proof-of-Control control family (six controls over an evidence-token stream; see [Assessing Proof-of-Control evidence](#assessing-proof-of-control-evidence)) | On `main` (PR #4), unreleased; no live `PoC-10.2` run yet |
+| M8c: red-team follow-ups (uncited conformance verdicts refused, scope on PoC reports, windowed sequences) | On `main` (PR #7), unreleased |
+| M9: Rekor time anchor (`rekor.json`, `verify-bundle --rekor`, claim CC-4). Not a Tier 3 custody claim and not Proof-of-Control | Implemented, unit-verified against a recorded public-log entry (2026-10-06), unreleased |
 | M4: live AWS read-only provider | Post-1.0 — deferred 2026-08-14: the demand story is OSCAL/ISO 42001-shaped, not AWS-shaped |
 
 ---

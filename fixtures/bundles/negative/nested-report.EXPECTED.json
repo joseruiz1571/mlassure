@@ -1,0 +1,5 @@
+{
+  "check": "V-11",
+  "errorPattern": "^report\\.json cannot be parsed: JSON nesting exceeds 256",
+  "description": "report.json replaced with an object nested past the strict parser's depth limit (256), then re-manifested so the digest matches. The parser must fail with a named nesting error rather than overflowing the stack, and V-11 must report that failure instead of skipping the metadata check."
+}

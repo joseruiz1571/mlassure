@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { parseJsonStrict, DuplicateKeyError, StrictJsonSyntaxError } from "./strict-json.js";
+import { parseJsonStrict, DuplicateKeyError, StrictJsonSyntaxError, StrictJsonNestingError, MAX_JSON_DEPTH } from "./strict-json.js";
 
 describe("parseJsonStrict (M6) — duplicate keys are violations, not last-wins", () => {
   it("agrees with JSON.parse on well-formed documents", () => {
@@ -66,6 +66,27 @@ describe("parseJsonStrict (M6) — duplicate keys are violations, not last-wins"
     expect(Object.keys(parsed)).toEqual(["__proto__", "a"]);
     expect(Object.getPrototypeOf(parsed)).toBe(Object.prototype);
     expect(parsed).toEqual(JSON.parse(doc));
+  });
+
+  function nest(depthOfInnermost: number): string {
+    let s = "";
+    for (let i = 0; i < depthOfInnermost - 1; i++) s += '{"a":';
+    s += "1";
+    for (let i = 0; i < depthOfInnermost - 1; i++) s += "}";
+    return s;
+  }
+
+  it("accepts nesting up to the limit and rejects one level past it by name, not by stack overflow", () => {
+    expect(parseJsonStrict(nest(MAX_JSON_DEPTH))).toEqual(JSON.parse(nest(MAX_JSON_DEPTH)));
+    let caught: unknown;
+    try {
+      parseJsonStrict(nest(MAX_JSON_DEPTH + 1));
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(StrictJsonNestingError);
+    expect((caught as Error).message).toBe(`JSON nesting exceeds ${MAX_JSON_DEPTH}`);
+    expect(caught).not.toBeInstanceOf(RangeError);
   });
 
   it("rejects malformed input with a StrictJsonSyntaxError, never silently", () => {

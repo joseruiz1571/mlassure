@@ -470,8 +470,51 @@ const VECTORS: Vector[] = [
     check: "V-12",
     errorPattern: "^unaccounted file in bundle: \\.DS_Store",
     description:
-      "A .DS_Store dropped into the bundle root. There is no junk-file allowlist — an allowlist is an attacker's hiding spot — so unaccounted content fails completeness no matter how ordinary its name looks. The only exemptions are the four signature-artifact names, exact-match.",
+      "A .DS_Store dropped into the bundle root. There is no junk-file allowlist — an allowlist is an attacker's hiding spot — so unaccounted content fails completeness no matter how ordinary its name looks. The only exemptions are the five signature-artifact names, exact-match (manifest.json, manifest.sig.bundle, manifest.json.sig, cosign.pub, rekor.json).",
     apply: (dir) => writeFileSync(join(dir, ".DS_Store"), "Bud1\u0000fixture\n", "utf-8"),
+  },
+  {
+    name: "unparseable-report",
+    check: "V-11",
+    errorPattern: "^report\\.json cannot be parsed:",
+    description:
+      "report.json replaced with text that is not JSON, then re-manifested (sha256 + bytes) and rootHash re-sealed, so the digest matches and V-9 is quiet. V-11 reads report.json to bind targetName and controlSetVersion; a file that cannot be parsed for this check is a violation, not a skip. This is a clarification of V-11, not a new check. Duplicate keys keep the V-2 wording (see duplicate-key-report).",
+    apply: (dir) => {
+      writeFileSync(join(dir, "report.json"), "this is not json\n", "utf-8");
+      remanifestFile(dir, "report.json");
+    },
+  },
+  {
+    name: "invalid-utf8-report",
+    check: "V-11",
+    errorPattern: "^report\\.json cannot be parsed: invalid UTF-8",
+    description:
+      "report.json contains byte FF inside a string, with its digest, byte count and root re-sealed. Lossy UTF-8 decoding would accept it with a replacement character; strict decoding must reject it for V-11 alone.",
+    apply: (dir) => {
+      const path = join(dir, "report.json");
+      const report = readFileSync(path, "utf-8");
+      writeFileSync(path, Buffer.concat([
+        Buffer.from(report.replace(/}\s*$/, ',"invalidEncoding":"')),
+        Buffer.from([0xff]),
+        Buffer.from('"}'),
+      ]));
+      remanifestFile(dir, "report.json");
+    },
+  },
+  {
+    name: "nested-report",
+    check: "V-11",
+    errorPattern: "^report\\.json cannot be parsed: JSON nesting exceeds 256",
+    description:
+      "report.json replaced with an object nested past the strict parser's depth limit (256), then re-manifested so the digest matches. The parser must fail with a named nesting error rather than overflowing the stack, and V-11 must report that failure instead of skipping the metadata check.",
+    apply: (dir) => {
+      let s = "";
+      for (let i = 0; i < 300; i++) s += '{"a":';
+      s += "1";
+      for (let i = 0; i < 300; i++) s += "}";
+      writeFileSync(join(dir, "report.json"), s, "utf-8");
+      remanifestFile(dir, "report.json");
+    },
   },
 ];
 

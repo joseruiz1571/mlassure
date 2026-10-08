@@ -1,0 +1,5 @@
+{
+  "check": "V-11",
+  "errorPattern": "^report\\.json cannot be parsed:",
+  "description": "report.json replaced with text that is not JSON, then re-manifested (sha256 + bytes) and rootHash re-sealed, so the digest matches and V-9 is quiet. V-11 reads report.json to bind targetName and controlSetVersion; a file that cannot be parsed for this check is a violation, not a skip. This is a clarification of V-11, not a new check. Duplicate keys keep the V-2 wording (see duplicate-key-report)."
+}

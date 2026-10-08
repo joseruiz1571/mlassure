@@ -15,6 +15,15 @@
  * place; it is not a performance path (manifests are kilobytes).
  */
 
+/** Decode without silently replacing invalid bytes or stripping a BOM. */
+export function decodeUtf8Strict(bytes: Uint8Array): string {
+  try {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    throw new Error("invalid UTF-8");
+  }
+}
+
 export class DuplicateKeyError extends Error {
   constructor(
     public readonly key: string,
@@ -29,6 +38,21 @@ export class StrictJsonSyntaxError extends Error {
   constructor(message: string, public readonly offset: number) {
     super(`${message} at offset ${offset}`);
     this.name = "StrictJsonSyntaxError";
+  }
+}
+
+/**
+ * Nesting limit (BUI-114). The reader is recursive; a hostile document can
+ * be nested deeply enough to overflow the stack (`RangeError`) before any
+ * custody check runs. 256 is far past any document the writer produces and
+ * fails with `StrictJsonNestingError` instead. The root value is depth 1.
+ */
+export const MAX_JSON_DEPTH = 256;
+
+export class StrictJsonNestingError extends Error {
+  constructor(public readonly maxDepth: number) {
+    super(`JSON nesting exceeds ${maxDepth}`);
+    this.name = "StrictJsonNestingError";
   }
 }
 
@@ -126,7 +150,8 @@ export function parseJsonStrict(text: string, options: StrictJsonOptions = {}): 
     return Number(written);
   };
 
-  const parseValue = (path: string): unknown => {
+  const parseValue = (path: string, depth: number): unknown => {
+    if (depth > MAX_JSON_DEPTH) throw new StrictJsonNestingError(MAX_JSON_DEPTH);
     skipWs();
     const c = text[i];
     if (c === undefined) return fail("unexpected end of input");
@@ -150,7 +175,7 @@ export function parseJsonStrict(text: string, options: StrictJsonOptions = {}): 
         // prototype instead of an own key, so the member would vanish from
         // the result. JSON.parse keeps it as an ordinary key; so must this.
         Object.defineProperty(obj, key, {
-          value: parseValue(`${path}.${key}`),
+          value: parseValue(`${path}.${key}`, depth + 1),
           enumerable: true,
           writable: true,
           configurable: true,
@@ -173,7 +198,7 @@ export function parseJsonStrict(text: string, options: StrictJsonOptions = {}): 
         return arr;
       }
       for (;;) {
-        arr.push(parseValue(`${path}[${arr.length}]`));
+        arr.push(parseValue(`${path}[${arr.length}]`, depth + 1));
         skipWs();
         if (text[i] === ",") {
           i++;
@@ -191,7 +216,7 @@ export function parseJsonStrict(text: string, options: StrictJsonOptions = {}): 
     return fail(`unexpected character "${c}"`);
   };
 
-  const value = parseValue("$");
+  const value = parseValue("$", 1);
   skipWs();
   if (i !== n) fail("trailing characters after JSON value");
   return value;

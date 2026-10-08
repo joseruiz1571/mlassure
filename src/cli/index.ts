@@ -1,4 +1,4 @@
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { loadControlSet } from "../loaders/control-loader.js";
 import { loadTarget } from "../providers/target-loader.js";
@@ -7,7 +7,7 @@ import { AnthropicProvider } from "../llm/anthropic-provider.js";
 import { runAssessment } from "../runner/assessment-runner.js";
 import { toOscalAssessmentResults } from "../output/oscal-ar.js";
 import { toNarrativeMarkdown } from "../output/narrative.js";
-import { writeEvidenceBundle, verifyEvidenceBundle } from "../output/bundle.js";
+import { writeEvidenceBundle, verifyEvidenceBundle, type VerifyOptions } from "../output/bundle.js";
 import { terminalReportLines } from "./summary.js";
 
 const USAGE = `
@@ -15,12 +15,12 @@ mlassure — agentic AI-control assurance
 
 Usage:
   mlassure assess --controls <path> --target <path> [--live] [--oscal <path>] [--narrative <path>] [--bundle <dir>] [--report <path>] [--model <id>] [--temperature <n>] [--repeat <n>]
-  mlassure verify-bundle <dir>
+  mlassure verify-bundle <dir> [--rekor] [--rekor-checkpoint <path>] [--rekor-key <pem>]
   mlassure --help
 
 Commands:
   assess           Assess a target against a control set
-  verify-bundle    Verify a custody bundle (integrity + completeness; signature checked separately via cosign)
+  verify-bundle    Verify a custody bundle (integrity + completeness; signature checked separately via cosign; --rekor checks the time anchor)
 
 Options:
   --controls <path>    Path to YAML or JSON control set file
@@ -33,6 +33,9 @@ Options:
   --model <id>         LLM model alias (default: MLASSURE_MODEL or claude-sonnet-4-6)
   --temperature <n>    LLM temperature in [0, 1]; 0 is valid (default: 0.1)
   --repeat <n>         Run the assessment N times (integer >= 1). Output paths get a -rNN suffix when N > 1
+  --rekor              Check rekor.json: inclusion proof against the checkpoint root (not the log index), plus the checkpoint signature and signed entry timestamp
+  --rekor-checkpoint <path>  Checkpoint note to compare (default: the checkpoint recorded in rekor.json). Requires --rekor
+  --rekor-key <pem>    Log public key PEM (default: the vendored Rekor key when the signer is rekor.sigstore.dev). Requires --rekor
   --help, -h           Show this help text
 `.trim();
 
@@ -48,8 +51,10 @@ const VALUE_FLAGS = new Set([
   "model",
   "temperature",
   "repeat",
+  "rekor-checkpoint",
+  "rekor-key",
 ]);
-const BOOLEAN_FLAGS = new Set(["live", "help"]);
+const BOOLEAN_FLAGS = new Set(["live", "help", "rekor"]);
 
 /**
  * Fail-loud parsing (silent-failure-hunter + code-reviewer, M3g): a
@@ -285,17 +290,21 @@ async function runLive(
   }
 }
 
-function runVerifyBundle(dir: string): never {
-  const result = verifyEvidenceBundle(dir);
+function runVerifyBundle(dir: string, opts: VerifyOptions): never {
+  const result = verifyEvidenceBundle(dir, opts);
   if (result.ok) {
     // Say precisely what exit 0 means (code-reviewer + hunter, M3g): this
     // command proves integrity + completeness; only the cosign signature
-    // anchors the manifest itself. Never let "OK" read as "custody intact".
+    // anchors who signed. --rekor adds the time-anchor claim (CC-4) and
+    // nothing else. Never let "OK" read as "custody intact" or as
+    // Proof-of-Control.
     console.log(
       `verify-bundle: OK — ${result.checkedFiles} files verified, root ${result.rootHash}`
     );
     console.log(
-      `  Scope: integrity + completeness only. Authenticity requires the signature:`
+      opts.rekor
+        ? `  Scope: integrity + completeness, and the Rekor time anchor (CC-4). Who signed still requires the signature:`
+        : `  Scope: integrity + completeness only. Authenticity requires the signature:`
     );
     const sigPresent = existsSync(join(dir, "manifest.sig.bundle"));
     console.log(
@@ -303,6 +312,19 @@ function runVerifyBundle(dir: string): never {
         ? `  Signature artifacts present but NOT verified by this command — run:\n    cosign verify-blob --key cosign.pub --bundle ${join(dir, "manifest.sig.bundle")} ${join(dir, "manifest.json")}`
         : `    cosign verify-blob --key cosign.pub --bundle <manifest.sig.bundle> ${join(dir, "manifest.json")}\n  (no signature artifacts found in this bundle)`
     );
+    if (result.rekor) {
+      const t = new Date(result.rekor.integratedTime * 1000).toISOString();
+      console.log(
+        `  Rekor: inclusion OK — checkpoint root matches the inclusion root at tree size ${result.rekor.treeSize} (entry log index ${result.rekor.logIndex}, proof index ${result.rekor.treeIndex}; neither was the comparison).`
+      );
+      console.log(`  Log-asserted time: ${t}  Signing-key fingerprint: ${result.rekor.identity}`);
+      console.log(
+        `  Checkpoint signature and signed entry timestamp verified with ${result.rekor.trustSource} trust anchor spki-sha256:${result.rekor.logID}.`
+      );
+      console.log(
+        `  Claim CC-4 only: signed inclusion of this manifest hash and a log-asserted timestamp. No later-head consistency or independent monitoring verified. Not Proof-of-Control, and not a Tier 3 custody claim.`
+      );
+    }
     process.exit(0);
   }
   console.error(`verify-bundle: FAILED — ${result.errors.length} violation(s):`);
@@ -385,7 +407,32 @@ async function main(): Promise<void> {
       );
       process.exit(1);
     }
-    runVerifyBundle(resolve(dir));
+    if ((flags["rekor-checkpoint"] !== undefined || flags["rekor-key"] !== undefined) && !flags["rekor"]) {
+      console.error("Error: --rekor-checkpoint and --rekor-key require --rekor");
+      console.error(USAGE);
+      process.exit(1);
+    }
+    const verifyOpts: VerifyOptions = {};
+    if (flags["rekor"]) {
+      verifyOpts.rekor = true;
+      if (flags["rekor-checkpoint"] !== undefined) {
+        const path = resolve(flags["rekor-checkpoint"]);
+        if (!existsSync(path)) {
+          console.error(`Error: --rekor-checkpoint file does not exist: ${path}`);
+          process.exit(1);
+        }
+        verifyOpts.rekorCheckpoint = readFileSync(path, "utf-8");
+      }
+      if (flags["rekor-key"] !== undefined) {
+        const path = resolve(flags["rekor-key"]);
+        if (!existsSync(path)) {
+          console.error(`Error: --rekor-key file does not exist: ${path}`);
+          process.exit(1);
+        }
+        verifyOpts.rekorPublicKeyPem = readFileSync(path, "utf-8");
+      }
+    }
+    runVerifyBundle(resolve(dir), verifyOpts);
   }
 
   console.error(`Unknown command: ${command ?? "(none)"}`);
