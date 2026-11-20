@@ -49,6 +49,15 @@ export class AnthropicProvider implements LlmProvider {
     return {
       stopReason: response.stop_reason ?? "end_turn",
       content: response.content as unknown as LlmContentBlock[],
+      // Optional study fields: dated snapshot id Anthropic actually served,
+      // plus token usage the current code discards (no dollar amounts here).
+      model: response.model,
+      usage: response.usage
+        ? {
+            inputTokens: response.usage.input_tokens,
+            outputTokens: response.usage.output_tokens,
+          }
+        : undefined,
     };
   }
 }
