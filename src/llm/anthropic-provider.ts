@@ -27,7 +27,13 @@ export class AnthropicProvider implements LlmProvider {
         "ANTHROPIC_API_KEY is required. Set it in .env, pass it to AnthropicProvider, or (in Docker) run with -e ANTHROPIC_API_KEY."
       );
     }
-    this.client = new Anthropic({ apiKey });
+    const workspaceId = process.env["ANTHROPIC_WORKSPACE_ID"];
+    this.client = new Anthropic({
+      apiKey,
+      ...(workspaceId
+        ? { defaultHeaders: { "anthropic-workspace-id": workspaceId } }
+        : {}),
+    });
     // MLASSURE_MODEL is documented in .env.example but was previously unread.
     this.model = options.model ?? process.env["MLASSURE_MODEL"] ?? "claude-sonnet-4-6";
     this.temperature = options.temperature ?? 0.1;
