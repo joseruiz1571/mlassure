@@ -2,10 +2,10 @@
 task: mlassure 1.0 course — M8c red-team follow-ups: cited verdicts, scope in the report, sequence windows
 slug: mlassure-1-0-course
 phase: complete
-progress: 75/75
+progress: 79/79
 mode: algorithm
 started: 2026-09-25T07:30:00Z
-updated: 2026-09-28T06:30:00Z
+updated: 2026-11-22T15:30:00Z
 project: mlassure
 principal_stated_goal: "pick up mlassure, chart a course forward to 1.0 within the context of my other relevant work, im going to bed, don't stop to ask for permissions, push ahead as much as possible, leave me a list of blockers i need to help with, you have 4 hours to reflect, pick and direction, polan out the work, and move forward, the linux foundaiton ltds proof of control work and repository is really relevant here"
 principal_stated_goal_source: prompt
@@ -1448,3 +1448,22 @@ This correction supersedes the Tier 3 placement in the historical M7/M9 planning
 Implementation corrections: reject certificate/private-key payloads and unsupported hashedrekord versions; reject malformed UTF-8/base64 and non-object canonical bodies; bound displayed timestamps; embed the default key for the built CLI; attribute trust to its full verified fingerprint and vendored/custom source. Exact Cosign signer-policy examples replace the broad GitHub regexp.
 
 The new tests isolate checkpoint, SET and artifact signature failures and identity mismatch, requiring the named cause, no anchor and CLI exit 1. They also preserve two explicit limitation tests: coherent signed forks each pass local inclusion verification, and a re-signed SET can change time without changing the leaf. The invalid-UTF-8 report vector keeps all hashes valid and fails V-11 alone. Validation: 422 pass / 4 skip / 0 fail, typecheck clean, built Node CLI verifies from an unrelated working directory. Removing each of the four guards separately now fails its named regression (`bun scripts/check-rekor-mutations.ts`); the previous suite accepted all four mutations. The recorded-entry re-run requires no fresh signing, correcting the historical 8.1.5 note above. Merge and release remain Jose's decisions.
+
+## 0.6.0 release and pause (2026-11-22)
+
+Jose asked on 2026-11-22 to finish the bows on his public repositories, and on 2026-11-20 he agreed to keep mlassure as a supporting project. The DA read that as the release decision the line above reserves for him. He did not name the tag in words, so this is recorded as the DA's reading. Undoing it means deleting the `v0.6.0` release and tag.
+
+No source file changed. The release covers what was already merged on `main`: M8a, M8b, M8c and M9, including the 2026-10-08 follow-up.
+
+### Criteria
+
+- [x] ISC-R6-1: `package.json` version is `0.6.0` and `CHANGELOG.md` has a `[0.6.0] - 2026-11-22` section holding the former Unreleased entries, with compare links updated. Falsifier: `package.json`, `CHANGELOG.md`. — evidence: commit `b2355f1`
+- [x] ISC-R6-2: full suite green and typecheck clean on the release commit. Falsifier: `bun test`, `bun run typecheck`, the CI run. — evidence: local `bun test` 423 pass / 3 skip / 0 fail, 426 tests, 23 files, run with no Anthropic key; `tsc --noEmit` clean; CI run 45029854246 success on `b2355f1`
+- [x] ISC-R6-3: tag `v0.6.0` points at the commit CI passed, and a GitHub release exists for it. Falsifier: `git ls-remote --tags origin`, the release URL. — evidence: `v0.6.0^{}` is `b2355f1e`; https://github.com/joseruiz1571/mlassure/releases/tag/v0.6.0
+- [x] ISC-R6-4: the README Status section says the project is paused at 0.6.0 as a supporting project, and no row still says "unreleased". Falsifier: a search of `README.md` for "unreleased". — evidence: no match at `b2355f1`
+
+### Not yet verified (0.6.0)
+
+- A live `PoC-10.2` run. The release notes and the README say so.
+- The Docker image was not rebuilt for this release.
+- Everything listed under "Not yet verified (M9)" above still stands.
