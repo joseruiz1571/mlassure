@@ -265,7 +265,9 @@ M3a added SC-7, RA-3, and CA-7 by reusing existing collectors and patterns — z
 
 ## Status
 
-Shipped through 0.5.0: citation guard, evidence store, agent loop, OSCAL Assessment Results, auditor narrative, eight NIST SP 800-53 controls, attestation and deterministic bypasses, Docker, tag provenance, and the custody chain (standalone spec, conformance vectors, Proof-of-Control crosswalk). M8a, M8b, and M8c are on `main` and unreleased. M9 (Rekor time anchor, claim CC-4) is implemented and unreleased. M4 (live AWS read-only provider) is post-1.0. Milestone write-up: [`IMPLEMENTATION.md`](IMPLEMENTATION.md).
+**Paused at 0.6.0 as a supporting project.** It is maintained when [Colophon](https://github.com/joseruiz1571/colophon) or the [control-wording study](https://github.com/joseruiz1571/control-wording-study) needs it, and it takes bug fixes. No feature work is scheduled.
+
+Shipped through 0.6.0: citation guard, evidence store, agent loop, OSCAL Assessment Results, auditor narrative, eight NIST SP 800-53 controls, attestation and deterministic bypasses, Docker, tag provenance, the custody chain (standalone spec, conformance vectors, Proof-of-Control crosswalk), the generic evidence provider, the Proof-of-Control control family, and the Rekor time anchor (claim CC-4). Not done: a live `PoC-10.2` run. M4 (live AWS read-only provider) is post-1.0. Milestone write-up: [`IMPLEMENTATION.md`](IMPLEMENTATION.md).
 
 | Milestone | Status |
 |-----------|--------|
@@ -281,10 +283,10 @@ Shipped through 0.5.0: citation guard, evidence store, agent loop, OSCAL Assessm
 | M3g: custody chain (evidence bundle, verify-bundle, Cosign signing) | Shipped, live-verified (2026-07-22) |
 | 0.4.0: reproducibility flags + run metadata (model/temperature/repeat, served-model + usage capture, control intent on reports) | Shipped, unit-verified (2026-08-30) |
 | 0.5.0 / M5–M7: release hygiene, custody chain [`SPEC.md`](SPEC.md) + conformance vectors + strict-parse and algorithm-id checks, [Proof-of-Control crosswalk](docs/proof-of-control.md) | Shipped, unit-verified (2026-09-25) |
-| M8a: generic `EvidenceProvider` (SageMaker becomes one family; behavior unchanged) | On `main` (PR #3), unreleased |
-| M8b: Proof-of-Control control family (six controls over an evidence-token stream; see [Assessing Proof-of-Control evidence](#assessing-proof-of-control-evidence)) | On `main` (PR #4), unreleased; no live `PoC-10.2` run yet |
-| M8c: red-team follow-ups (uncited conformance verdicts refused, scope on PoC reports, windowed sequences) | On `main` (PR #7), unreleased |
-| M9: Rekor time anchor (`rekor.json`, `verify-bundle --rekor`, claim CC-4). Not a Tier 3 custody claim and not Proof-of-Control | Implemented, unit-verified against a recorded public-log entry (2026-10-06), unreleased |
+| M8a: generic `EvidenceProvider` (SageMaker becomes one family; behavior unchanged) | Shipped v0.6.0 (PR #3) |
+| M8b: Proof-of-Control control family (six controls over an evidence-token stream; see [Assessing Proof-of-Control evidence](#assessing-proof-of-control-evidence)) | Shipped v0.6.0 (PR #4), unit-verified; no live `PoC-10.2` run yet |
+| M8c: red-team follow-ups (uncited conformance verdicts refused, scope on PoC reports, windowed sequences) | Shipped v0.6.0 (PR #7) |
+| M9: Rekor time anchor (`rekor.json`, `verify-bundle --rekor`, claim CC-4). Not a Tier 3 custody claim and not Proof-of-Control | Shipped v0.6.0, unit-verified against a recorded public-log entry (2026-10-06) |
 | M4: live AWS read-only provider | Post-1.0 — deferred 2026-08-14: the demand story is OSCAL/ISO 42001-shaped, not AWS-shaped |
 
 ---

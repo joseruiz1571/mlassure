@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-22
+
+Releases the work that had been on `main` since October: the generic evidence provider (M8a), the Proof-of-Control control family (M8b), the red-team follow-ups (M8c) and the Rekor time anchor (M9). No code changed between the last merge and this tag. Not yet done: a live `PoC-10.2` run.
+
 ### Fixed — adversarial review of M9
 
 - Reject non-object canonical bodies without throwing, unsupported hashedrekord versions, certificate/private-key inputs, noncanonical base64, unsupported log-key algorithms, and timestamps outside the CLI's date range. Decode manifest, report and Rekor JSON as strict UTF-8; the new `invalid-utf8-report` vector retains valid digests and fails V-11 alone.
@@ -157,7 +161,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - M0 scaffold: CLI, shared types, control loader, fixture provider, and evidence store (9b00bbf).
 - M1: Anthropic tool-use loop, fail-closed citation guard, and the assessment runner (b247cdd).
 
-[Unreleased]: https://github.com/joseruiz1571/mlassure/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/joseruiz1571/mlassure/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/joseruiz1571/mlassure/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/joseruiz1571/mlassure/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/joseruiz1571/mlassure/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/joseruiz1571/mlassure/compare/v0.2.0...v0.3.0
